@@ -56,14 +56,14 @@ public class NeuralNetworkTest {
     @Test
     public void testPropagateLayer() {
         NeuralNetwork nn = new NeuralNetwork(2, 1);
-        Matrix inputs = new ArrayMatrix(new float[][] { { 0, 0.5f }, { 0, 1f } });
-        Matrix outputs = new ArrayMatrix(1, 2);
+        float[][] inputs = new float[][] { { 0, 0.5f }, { 0, 1f } };
+        float[][] outputs = new float[1][2];
         nn.propagate(inputs, outputs);
-        float bias = nn.biases(0).get(0, 0);
-        float w0 = nn.weights(0).get(0, 0);
-        float w1 = nn.weights(0).get(0, 1);
-        assertEquals(NeuralNetwork.sigmoid(bias), outputs.get(0, 0), EPSILON);
-        assertEquals(NeuralNetwork.sigmoid(0.5f * w0 + w1 + bias), outputs.get(0, 1), EPSILON);
+        float bias = nn.biases(0)[0];
+        float w0 = nn.weights(0)[0][0];
+        float w1 = nn.weights(0)[0][1];
+        assertEquals(NeuralNetwork.sigmoid(bias), outputs[0][0], EPSILON);
+        assertEquals(NeuralNetwork.sigmoid(0.5f * w0 + w1 + bias), outputs[0][1], EPSILON);
     }
 
 }

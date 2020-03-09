@@ -2,38 +2,75 @@ package org.yah.tests.perceptron;
 
 import java.util.Iterator;
 import java.util.NoSuchElementException;
+import java.util.Random;
 
 public class NeuralNetwork {
 
+    public static final Random RANDOM = createRandom();
+
+    private static Random createRandom() {
+        long seed = seed();
+        return seed < 0 ? new Random() : new Random(seed);
+    }
+
+    public static long seed() {
+        long seed = -1;
+        String prop = System.getProperty("seed");
+        if (prop != null) {
+            try {
+                seed = Long.parseLong(prop);
+            } catch (NumberFormatException e) {}
+        }
+        return seed;
+    }
+    
+    @FunctionalInterface
+    private interface MatrixFunction {
+        float apply(float f);
+    }
+    
     private final int[] layerSizes;
 
-    private final Matrix[] weights;
-    private final Matrix[] biases;
+    private final float[][][] weights;
+    private final float[][] biases;
 
     public NeuralNetwork(int... layerSizes) {
         if (layerSizes.length < 2)
             throw new IllegalArgumentException("Invalid layers counts " + layerSizes.length);
         this.layerSizes = layerSizes;
         int layers = layers();
-        weights = new Matrix[layers];
-        biases = new Matrix[layers];
+        weights = new float[layers][][];
+        biases = new float[layers][];
         for (int layer = 0; layer < layers; layer++) {
             int neurons = neurons(layer);
             int features = features(layer);
-            weights[layer] = new ArrayMatrix(neurons, features);
-            biases[layer] = new ArrayMatrix(neurons, 1);
+            weights[layer] = new float[neurons][features];
+            biases[layer] = new float[neurons];
             // He-et-al Initialization
             // https://towardsdatascience.com/random-initialization-for-neural-networks-a-thing-of-the-past-bfcdd806bf9e
-            weights[layer].random().mul((float) Math.sqrt(2.0 / features));
-            biases[layer].random().mul((float) Math.sqrt(2.0 / features));
+            float q = (float) Math.sqrt(2.0 / features);
+            set(weights[layer], v -> (float) RANDOM.nextGaussian() * q);
+            set(biases[layer], v -> (float) RANDOM.nextGaussian() * q);
         }
     }
 
-    public Matrix weights(int layer) {
+    private void set(float[][] m, MatrixFunction f) {
+        for (int row = 0; row < m.length; row++) {
+            set(m[row], f);
+        }
+    }
+
+    private void set(float[] v, MatrixFunction f) {
+        for (int i = 0; i < v.length; i++) {
+            v[i] = f.apply(v[i]);
+        }
+    }
+
+    public float[][] weights(int layer) {
         return weights[layer];
     }
 
-    public Matrix biases(int layer) {
+    public float[] biases(int layer) {
         return biases[layer];
     }
 
@@ -65,29 +102,15 @@ public class NeuralNetwork {
         return new BatchIterator(source);
     }
 
-    static float sigmoid(float v) {
-        return (float) (1.0 / (1.0 + exp(-v)));
-    }
-
-    static float sigmoid_prime(float v) {
-        float sv = sigmoid(v);
-        return sv * (1.0f - sv);
-    }
-
-    static double exp(double val) {
-        final long tmp = (long) (1512775 * val + (1072693248 - 60801));
-        return Double.longBitsToDouble(tmp << 32);
-    }
-
     public float evaluate(Iterator<Batch> batchIter) {
-        Matrix outputs = null;
+        float[][] outputs = null;
         float total = 0;
         int count = 0;
         while (batchIter.hasNext()) {
             NeuralNetwork.Batch batch = batchIter.next();
-            if (outputs == null || outputs.columns() != batch.inputs.columns())
-                outputs = new ArrayMatrix(outputs(), batch.inputs.columns());
-            propagate(batch.inputs, outputs);
+            if (outputs != null && outputs[0].length != batch.size())
+                outputs = null;
+            outputs = propagate(batch.inputs, outputs);
             total += batch.accuracy(outputs);
             count++;
         }
@@ -95,21 +118,39 @@ public class NeuralNetwork {
     }
 
     public float evaluate(Batch batch) {
-        Matrix outputs = propagate(batch.inputs, null);
+        float[][] outputs = propagate(batch.inputs, null);
         return batch.accuracy(outputs);
     }
 
-    public Matrix propagate(Matrix inputs, Matrix outputs) {
-        if (outputs == null)
-            outputs = new ArrayMatrix(outputs(), inputs.columns());
-        assert inputs.columns() == outputs.columns();
+    public float[][] propagate(float[][] inputs, float[][] outputs) {
+        assert outputs == null || inputs[0].length == outputs[0].length;
         int lastLayer = layers() - 1;
         for (int layer = 0; layer < lastLayer; layer++) {
             inputs = propagate(inputs, weights[layer], biases[layer], null);
-            inputs.apply(NeuralNetwork::sigmoid);
+            sigmoid(inputs);
         }
-        propagate(inputs, weights[lastLayer], biases[lastLayer], outputs);
-        outputs.apply(NeuralNetwork::sigmoid);
+        outputs = propagate(inputs, weights[lastLayer], biases[lastLayer], outputs);
+        sigmoid(outputs);
+        return outputs;
+    }
+
+    static float[][] propagate(float[][] inputs, float[][] weights, float[] biases,
+            float[][] outputs) {
+        assert weights[0].length == inputs.length;
+        assert weights.length == biases.length;
+        assert outputs == null || outputs.length == weights.length;
+        assert outputs == null || outputs[0].length == inputs[0].length;
+        if (outputs == null)
+            outputs = new float[weights.length][inputs[0].length];
+        for (int row = 0; row < weights.length; row++) {
+            for (int col = 0; col < inputs[0].length; col++) {
+                float v = biases[row];
+                for (int ir = 0; ir < inputs.length; ir++) {
+                    v += inputs[ir][col] * weights[row][ir];
+                }
+                outputs[row][col] = v;
+            }
+        }
         return outputs;
     }
 
@@ -132,15 +173,15 @@ public class NeuralNetwork {
     }
 
     public class Batch {
-        public final Matrix inputs;
-        public final Matrix expected;
+        public final float[][] inputs;
+        public final float[][] expected;
 
         public Batch(int size) {
-            inputs = new ArrayMatrix(features(), size);
-            expected = new ArrayMatrix(outputs(), size);
+            inputs = new float[features()][size];
+            expected = new float[outputs()][size];
         }
 
-        public Batch(Matrix inputs, Matrix expected) {
+        public Batch(float[][] inputs, float[][] expected) {
             this.inputs = inputs;
             this.expected = expected;
         }
@@ -150,93 +191,78 @@ public class NeuralNetwork {
         }
 
         public int size() {
-            return inputs.columns();
+            return inputs[0].length;
         }
 
-        public float accuracy(Matrix outputs) {
+        public float accuracy(float[][] outputs) {
+            int size = size();
             int macthed = 0;
-            for (int sample = 0; sample < expected.columns(); sample++) {
-                if (expected.maxRowIndex(sample) == outputs.maxRowIndex(sample))
+            for (int sample = 0; sample < size; sample++) {
+                if (maxRowIndex(expected, sample) == maxRowIndex(outputs, sample))
                     macthed++;
             }
-            return macthed / (float) expected.columns();
+            return macthed / (float) size;
         }
-    }
-
-    static Matrix propagate(Matrix inputs, Matrix weights, Matrix biases, Matrix outputs) {
-        assert weights.columns() == inputs.rows();
-        assert weights.rows() == biases.rows();
-        assert outputs == null || outputs.rows() == weights.rows();
-        assert outputs == null || outputs.columns() == inputs.columns();
-        if (outputs == null)
-            outputs = new ArrayMatrix(weights.rows(), inputs.columns());
-        for (int row = 0; row < weights.rows(); row++) {
-            for (int col = 0; col < inputs.columns(); col++) {
-                float v = biases.get(row, 0);
-                for (int ir = 0; ir < inputs.rows(); ir++) {
-                    v += inputs.get(ir, col) * weights.get(row, ir);
-                }
-                outputs.set(row, col, v);
-            }
-        }
-        return outputs;
     }
 
     class BatchContext {
 
         class LayerContext {
             private final int layer;
-            private final Matrix z; // results of weight + bias [neurons[layer] X batchSize]
-            private final Matrix activation; // sigmoid(z) [neurons[layer] X batchSize]
+            private final float[][] z; // results of weight + bias [neurons[layer] X batchSize]
+            private final float[][] activation; // sigmoid(z) [neurons[layer] X batchSize]
 
-            private final Matrix wgrad; // weight gradients [neurons[layer] X features]
-            private final Matrix bgrad; // bias gradients [neurons[layer] X 1]
+            private final float[][] wgrad; // weight gradients [neurons[layer] X features]
+            private final float[] bgrad; // bias gradients [neurons[layer] X 1]
 
             public LayerContext(int layer, int batchSize) {
                 this.layer = layer;
                 int neurons = neurons(layer);
-                z = new ArrayMatrix(neurons, batchSize);
-                activation = new ArrayMatrix(neurons, batchSize);
-                wgrad = new ArrayMatrix(neurons, features(layer));
-                bgrad = new ArrayMatrix(neurons, 1);
+                z = new float[neurons][batchSize];
+                activation = new float[neurons][batchSize];
+                wgrad = new float[neurons][features(layer)];
+                bgrad = new float[neurons];
             }
 
-            public Matrix forward(Matrix inputs) {
+            public float[][] forward(float[][] inputs) {
                 propagate(inputs, weights[layer], biases[layer], z);
-                Matrix.apply(z, NeuralNetwork::sigmoid, activation);
+                sigmoid(z, activation);
                 return activation;
             }
 
-            public Matrix backward(Matrix inputs) {
-                z.apply(NeuralNetwork::sigmoid_prime);
-                activation.mul(z);
-                for (int r = 0; r < activation.rows(); r++) {
-                    float sum = 0;
-                    for (int c = 0; c < activation.columns(); c++) {
-                        sum += activation.get(r, c);
+            public float[][] backward(float[][] inputs) {
+                for (int r = 0; r < activation.length; r++) {
+                    bgrad[r] = 0;
+                    for (int c = 0; c < activation[r].length; c++) {
+                        activation[r][c] *= sigmoid_prime(z[r][c]);
+                        bgrad[r] += activation[r][c];
                     }
-                    bgrad.set(r, 0, sum);
                 }
-                Matrix.dot(activation, inputs.transpose(), wgrad);
+
+                zero(wgrad);
+                // delta . T(inputs)
+                for (int r = 0; r < activation.length; r++) {
+                    for (int c = 0; c < activation[r].length; c++) {
+                        for (int ir = 0; ir < inputs.length; ir++) {
+                            wgrad[r][ir] += activation[r][c] * inputs[ir][c];
+                        }
+                    }
+                }
                 return activation;
             }
 
             public void updateNetwork(float learningRate) {
                 int neurons = neurons(layer);
                 int features = features(layer);
-                int batchSize = z.columns();
+                int batchSize = z[0].length;
+                float lr = learningRate / batchSize;
                 for (int neuron = 0; neuron < neurons; neuron++) {
-                    float b = biases[layer].get(neuron, 0);
-                    b -= (learningRate / batchSize) * bgrad.get(neuron, 0);
-                    biases[layer].set(neuron, 0, b);
+                    biases[layer][neuron] -= lr * bgrad[neuron];
                     for (int feature = 0; feature < features; feature++) {
-                        float w = weights[layer].get(neuron, feature);
-                        w -= (learningRate / batchSize) * wgrad.get(neuron, feature);
-                        weights[layer].set(neuron, feature, w);
+                        weights[layer][neuron][feature] -= lr * wgrad[neuron][feature];
                     }
                 }
             }
-
         }
 
         private LayerContext[] layerContexts;
@@ -259,9 +285,9 @@ public class NeuralNetwork {
             }
         }
 
-        public void train(Matrix inputs, Matrix expected, float learningRate) {
-            prepare(inputs.columns());
-            Matrix activation = inputs;
+        public void train(float[][] inputs, float[][] expected, float learningRate) {
+            prepare(inputs[0].length);
+            float[][] activation = inputs;
             // forward propagation
             for (int layer = 0; layer < layers; layer++) {
                 activation = layerContexts[layer].forward(activation);
@@ -270,14 +296,23 @@ public class NeuralNetwork {
             // backward propagation
             // compute gradients
             // cost derivative = outputs - y
-            Matrix.sub(activation, expected, activation);
-            LayerContext layerContext = layerContexts[layers - 1];
-            Matrix delta = layerContext.backward(layerContexts[layers - 2].activation);
+            costDerivative(activation, expected);
+
+            activation = layerContexts[layers - 2].activation;
+            float[][] delta = layerContexts[layers - 1].backward(activation);
             for (int layer = weights.length - 2; layer >= 0; layer--) {
-                layerContext = layerContexts[layer];
-                Matrix layerInputs = layer > 0 ? layerContexts[layer - 1].activation : inputs;
-                Matrix.dot(weights[layer + 1].transpose(), delta, layerContext.activation);
-                delta = layerContext.backward(layerInputs);
+                // T(W[layer+1]) . delta
+                zero(activation);
+                float[][] m = weights[layer + 1];
+                for (int c = 0; c < m[0].length; c++) {
+                    for (int r = 0; r < m.length; r++) {
+                        for (int dc = 0; dc < delta[r].length; dc++) {
+                            activation[c][dc] += m[r][c] * delta[r][dc];
+                        }
+                    }
+                }
+                activation = layer > 0 ? layerContexts[layer - 1].activation : inputs;
+                delta = layerContexts[layer].backward(activation);
             }
 
             // apply gradients
@@ -285,6 +320,15 @@ public class NeuralNetwork {
                 layerContexts[layer].updateNetwork(learningRate);
             }
         }
+
+        private void costDerivative(float[][] actual, float[][] expected) {
+            for (int r = 0; r < actual.length; r++) {
+                for (int c = 0; c < actual[r].length; c++) {
+                    actual[r][c] -= expected[r][c];
+                }
+            }
+        }
+
     }
 
     public interface BatchSource {
@@ -327,7 +371,7 @@ public class NeuralNetwork {
     }
 
     public static class ArrayBatchSource implements BatchSource {
-        private final Matrix inputs;
+        private final float[][] inputs;
         private final int[] expected;
         private final int batchSize;
 
@@ -338,14 +382,14 @@ public class NeuralNetwork {
         public ArrayBatchSource(float[][] inputs, int[] expected, int batchSize) {
             if (inputs.length != expected.length)
                 throw new IllegalArgumentException("Size mismatch");
-            this.inputs = new ArrayMatrix(inputs);
+            this.inputs = inputs;
             this.expected = expected;
             this.batchSize = batchSize;
         }
 
         @Override
         public int size() {
-            return inputs.rows();
+            return inputs.length;
         }
 
         @Override
@@ -357,8 +401,8 @@ public class NeuralNetwork {
         public void load(int index, int size, Batch batch) {
             for (int i = 0; i < size; i++) {
                 int row = i + index;
-                for (int col = 0; col < inputs.columns(); col++) {
-                    batch.inputs.set(col, i, inputs.get(row, col));
+                for (int col = 0; col < inputs[0].length; col++) {
+                    batch.inputs[col][i] = inputs[row][col];
                 }
             }
             Labels.toExpectedMatrix(expected, index, batch.expected);
@@ -366,21 +410,19 @@ public class NeuralNetwork {
     }
 
     public static class Labels {
-        public static void toExpectedMatrix(int[] indices, int indexOffset, Matrix m) {
-            assert m.columns() == indices.length;
+        public static void toExpectedMatrix(int[] indices, int indexOffset, float[][] m) {
             for (int i = indexOffset, col = 0; i < indices.length
-                    && col < m.columns(); i++, col++) {
+                    && col < m[0].length; i++, col++) {
                 int index = indices[i];
-                for (int row = 0; row < m.rows(); row++) {
-                    m.set(row, col, index == row ? 1 : 0);
+                for (int row = 0; row < m.length; row++) {
+                    m[row][col] = index == row ? 1 : 0;
                 }
             }
         }
 
-        public static void toExpectedIndex(Matrix m, int[] indices) {
-            assert m.columns() == indices.length;
-            for (int i = 0; i < m.columns(); i++) {
-                indices[i] = m.maxRowIndex(i);
+        public static void toExpectedIndex(float[][] m, int[] indices) {
+            for (int i = 0; i < m[0].length; i++) {
+                indices[i] = maxRowIndex(m, i);
             }
         }
 
@@ -393,5 +435,52 @@ public class NeuralNetwork {
             }
             return matched;
         }
+    }
+
+    public static int maxRowIndex(float[][] m, int col) {
+        int res = -1;
+        float max = Float.MIN_VALUE;
+        for (int row = 0; row < m.length; row++) {
+            float v = m[row][col];
+            if (v > max) {
+                max = v;
+                res = row;
+            }
+        }
+        return res;
+    }
+
+    static void sigmoid(float[][] in) {
+        sigmoid(in, in);
+    }
+
+    static void sigmoid(float[][] in, float[][] out) {
+        for (int r = 0; r < in.length; r++) {
+            for (int c = 0; c < in[r].length; c++) {
+                out[r][c] = sigmoid(in[r][c]);
+            }
+        }
+    }
+
+    static void zero(float[][] m) {
+        for (int r = 0; r < m.length; r++) {
+            for (int c = 0; c < m[r].length; c++) {
+                m[r][c] = 0f;
+            }
+        }
+    }
+
+    static float sigmoid(float v) {
+        return (float) (1.0 / (1.0 + exp(-v)));
+    }
+
+    static float sigmoid_prime(float v) {
+        float sv = sigmoid(v);
+        return sv * (1.0f - sv);
+    }
+
+    static double exp(double val) {
+        final long tmp = (long) (1512775 * val + (1072693248 - 60801));
+        return Double.longBitsToDouble(tmp << 32);
     }
 }

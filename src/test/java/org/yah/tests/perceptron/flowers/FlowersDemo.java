@@ -6,9 +6,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import org.yah.tests.perceptron.AbstractGLDemo;
-import org.yah.tests.perceptron.ArrayMatrix;
 import org.yah.tests.perceptron.GLDemoLauncher;
-import org.yah.tests.perceptron.Matrix;
 import org.yah.tests.perceptron.NeuralNetwork;
 import org.yah.tests.perceptron.NeuralNetwork.Batch;
 import org.yah.tests.perceptron.NeuralNetwork.Labels;
@@ -37,8 +35,8 @@ public class FlowersDemo extends AbstractGLDemo {
     private int[] DARKER_FLOWER_COLORS = { 0xcc0000ff, 0x00cc00ff };
     private int[] SAMPLED_FLOWER_COLORS = { 0x000000ff, 0x000000ff };
 
-    private Matrix allFlowers = new ArrayMatrix(2, FLOWERS); // inputs = LAYERS[0] x flowers
-    private Matrix outputs = new ArrayMatrix(2, FLOWERS); // outputs = LAYERS[-1] x flowers
+    private float[][] allFlowers = new float[2][FLOWERS]; // inputs = LAYERS[0] x flowers
+    private float[][] outputs = new float[2][FLOWERS]; // outputs = LAYERS[-1] x flowers
 
     private final int[] evaluatedFlowers = new int[FLOWERS];
 
@@ -51,6 +49,7 @@ public class FlowersDemo extends AbstractGLDemo {
     private int epoch;
 
     private boolean paused;
+    private boolean destroyed;
 
     public FlowersDemo() {}
 
@@ -59,14 +58,21 @@ public class FlowersDemo extends AbstractGLDemo {
         super.create();
         executor = Executors.newSingleThreadExecutor();
         createBuffer(WIDTH, HEIGHT);
-        random = Matrix.createRandom();
+        random = NeuralNetwork.RANDOM;
         network = new NeuralNetwork(LAYERS);
         batchSource = new FlowerBatchSource(SAMPLES, BATCH_SIZE);
         executor.submit(this::createFlowers);
     }
 
+    @Override
+    public void dispose() {
+        destroyed = true;
+        executor.shutdownNow();
+        super.dispose();
+    }
+
     private void createFlowers() {
-        long seed = Matrix.seed();
+        long seed = NeuralNetwork.seed();
         OpenSimplexNoise noise = new OpenSimplexNoise(seed < 0 ? System.currentTimeMillis() : seed);
         int flowerIndex = 0;
         for (int y = 0; y < HEIGHT; y++) {
@@ -76,8 +82,8 @@ public class FlowersDemo extends AbstractGLDemo {
                 double n = noise.eval(dx * NOISE_SCALE, dy * NOISE_SCALE);
                 n = (n + 1) / 2.0;
                 flowers[flowerIndex] = (int) (n + 0.5);
-                allFlowers.set(0, flowerIndex, dx);
-                allFlowers.set(1, flowerIndex, dy);
+                allFlowers[0][flowerIndex] = dx;
+                allFlowers[1][flowerIndex] = dy;
                 flowerIndex++;
             }
         }
@@ -106,26 +112,33 @@ public class FlowersDemo extends AbstractGLDemo {
             network.propagate(allFlowers, outputs);
             synchronized (evaluatedFlowers) {
                 for (int flowerIndex = 0; flowerIndex < FLOWERS; flowerIndex++) {
-                    evaluatedFlowers[flowerIndex] = outputs.maxRowIndex(flowerIndex);
+                    evaluatedFlowers[flowerIndex] = NeuralNetwork.maxRowIndex(outputs, flowerIndex);
                 }
             }
+            schedule(this::renderFlowers);
 
             float accuracy = Labels.countMatched(flowers, evaluatedFlowers) / (float) FLOWERS;
-            float eps = epoch / (elapsed / 1000f);
-            System.out.println("accuracy: " + accuracy + ", epoch/s " + eps);
+            double es = elapsed / 1000.0;
+            System.out
+                    .println(String.format("%.2f%% %.2f e/s %.2f Ms/s", accuracy * 100, epoch / es,
+                            (epoch * SAMPLES / 1000000.0) / es));
             lastLog = System.currentTimeMillis();
             epoch = 0;
         }
     }
 
     private void train() {
-        if (!paused) {
-            network.train(network.batchIterator(batchSource), LEARNING_RATE);
-            epoch++;
-            evaluate();
-            schedule(this::renderFlowers);
+        try {
+            while (!destroyed) {
+                while (paused)
+                    Thread.sleep(100);
+                network.train(network.batchIterator(batchSource), LEARNING_RATE);
+                epoch++;
+                evaluate();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
         }
-        executor.submit(this::train);
     }
 
     private void renderFlowers(Pixmap pixmap) {
@@ -187,20 +200,14 @@ public class FlowersDemo extends AbstractGLDemo {
                 int flowerIndex = samples[index + i];
                 int x = flowerIndex % WIDTH;
                 int y = flowerIndex / WIDTH;
-                batch.inputs.set(0, i, x / (float) WIDTH);
-                batch.inputs.set(1, i, y / (float) HEIGHT);
+                batch.inputs[0][i] = x / (float) WIDTH;
+                batch.inputs[1][i] = y / (float) HEIGHT;
                 int flower = flowers[flowerIndex];
                 for (int output = 0; output < network.outputs(); output++) {
-                    batch.expected.set(output, i, output == flower ? 1 : 0);
+                    batch.expected[output][i] = output == flower ? 1 : 0;
                 }
             }
         }
-    }
-
-    @Override
-    public void dispose() {
-        executor.shutdownNow();
-        super.dispose();
     }
 
     public static void main(String[] args) {
