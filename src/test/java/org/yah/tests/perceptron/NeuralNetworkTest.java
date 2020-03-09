@@ -1,12 +1,12 @@
 package org.yah.tests.perceptron;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
 
 import org.junit.Test;
-
+import static org.yah.tests.perceptron.Activation.*;
 public class NeuralNetworkTest {
 
-    private static final float EPSILON = 10E-5f;
+    private static final double EPSILON = 10E-5f;
 
     @Test
     public void testLayers() {
@@ -56,14 +56,14 @@ public class NeuralNetworkTest {
     @Test
     public void testPropagateLayer() {
         NeuralNetwork nn = new NeuralNetwork(2, 1);
-        float[][] inputs = new float[][] { { 0, 0.5f }, { 0, 1f } };
-        float[][] outputs = new float[1][2];
+        double[][] inputs = new double[][] { { 0, 0.5f }, { 0, 1f } };
+        double[][] outputs = new double[1][2];
         nn.propagate(inputs, outputs);
-        float bias = nn.biases(0)[0];
-        float w0 = nn.weights(0)[0][0];
-        float w1 = nn.weights(0)[0][1];
-        assertEquals(NeuralNetwork.sigmoid(bias), outputs[0][0], EPSILON);
-        assertEquals(NeuralNetwork.sigmoid(0.5f * w0 + w1 + bias), outputs[0][1], EPSILON);
+        double bias = nn.biases(0)[0];
+        double w0 = nn.weights(0)[0][0];
+        double w1 = nn.weights(0)[0][1];
+        assertEquals(sigmoid(bias), outputs[0][0], EPSILON);
+        assertEquals(sigmoid(0.5f * w0 + w1 + bias), outputs[0][1], EPSILON);
     }
 
 }

@@ -7,25 +7,27 @@ import java.util.concurrent.Executors;
 
 import org.yah.tests.perceptron.AbstractGLDemo;
 import org.yah.tests.perceptron.GLDemoLauncher;
+import org.yah.tests.perceptron.Labels;
+import org.yah.tests.perceptron.Matrix;
 import org.yah.tests.perceptron.NeuralNetwork;
 import org.yah.tests.perceptron.NeuralNetwork.Batch;
-import org.yah.tests.perceptron.NeuralNetwork.Labels;
 
 import com.badlogic.gdx.Input;
+import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
 import com.badlogic.gdx.graphics.Pixmap;
 
 public class FlowersDemo extends AbstractGLDemo {
 
-    private static final int WIDTH = 640;
-    private static final int HEIGHT = 480;
+    private static final int WIDTH = 1024;
+    private static final int HEIGHT = 900;
     private static final double NOISE_SCALE = 3f;
 
     private static final int FLOWERS = WIDTH * HEIGHT;
 
-    private static final int[] LAYERS = { 2, 16, 2 };
-    private static final int SAMPLES = FLOWERS / 60;
-    private static final int BATCH_SIZE = 32;
-    private static final float LEARNING_RATE = 0.5f;
+    private static final int[] LAYERS = { 2, 18, 2 };
+    private static final int SAMPLES = (int) (FLOWERS * 0.05);
+    private static final int BATCH_SIZE = 64;
+    private static final double LEARNING_RATE = 0.8f;
 
     private ExecutorService executor;
 
@@ -35,8 +37,8 @@ public class FlowersDemo extends AbstractGLDemo {
     private int[] DARKER_FLOWER_COLORS = { 0xcc0000ff, 0x00cc00ff };
     private int[] SAMPLED_FLOWER_COLORS = { 0x000000ff, 0x000000ff };
 
-    private float[][] allFlowers = new float[2][FLOWERS]; // inputs = LAYERS[0] x flowers
-    private float[][] outputs = new float[2][FLOWERS]; // outputs = LAYERS[-1] x flowers
+    private double[][] allFlowers = new double[2][FLOWERS]; // inputs = LAYERS[0] x flowers
+    private double[][] outputs = new double[2][FLOWERS]; // outputs = LAYERS[-1] x flowers
 
     private final int[] evaluatedFlowers = new int[FLOWERS];
 
@@ -48,7 +50,7 @@ public class FlowersDemo extends AbstractGLDemo {
     private long lastLog;
     private int epoch;
 
-    private boolean paused;
+    private boolean paused = true;
     private boolean destroyed;
 
     public FlowersDemo() {}
@@ -65,6 +67,11 @@ public class FlowersDemo extends AbstractGLDemo {
     }
 
     @Override
+    public void configure(Lwjgl3ApplicationConfiguration config) {
+        config.setWindowedMode(WIDTH, HEIGHT);
+    }
+
+    @Override
     public void dispose() {
         destroyed = true;
         executor.shutdownNow();
@@ -76,9 +83,9 @@ public class FlowersDemo extends AbstractGLDemo {
         OpenSimplexNoise noise = new OpenSimplexNoise(seed < 0 ? System.currentTimeMillis() : seed);
         int flowerIndex = 0;
         for (int y = 0; y < HEIGHT; y++) {
-            float dy = y / (float) HEIGHT;
+            double dy = y / (double) HEIGHT;
             for (int x = 0; x < WIDTH; x++) {
-                float dx = x / (float) WIDTH;
+                double dx = x / (double) WIDTH;
                 double n = noise.eval(dx * NOISE_SCALE, dy * NOISE_SCALE);
                 n = (n + 1) / 2.0;
                 flowers[flowerIndex] = (int) (n + 0.5);
@@ -112,12 +119,12 @@ public class FlowersDemo extends AbstractGLDemo {
             network.propagate(allFlowers, outputs);
             synchronized (evaluatedFlowers) {
                 for (int flowerIndex = 0; flowerIndex < FLOWERS; flowerIndex++) {
-                    evaluatedFlowers[flowerIndex] = NeuralNetwork.maxRowIndex(outputs, flowerIndex);
+                    evaluatedFlowers[flowerIndex] = Matrix.maxRowIndex(outputs, flowerIndex);
                 }
             }
             schedule(this::renderFlowers);
 
-            float accuracy = Labels.countMatched(flowers, evaluatedFlowers) / (float) FLOWERS;
+            double accuracy = Labels.countMatched(flowers, evaluatedFlowers) / (double) FLOWERS;
             double es = elapsed / 1000.0;
             System.out
                     .println(String.format("%.2f%% %.2f e/s %.2f Ms/s", accuracy * 100, epoch / es,
@@ -196,16 +203,16 @@ public class FlowersDemo extends AbstractGLDemo {
 
         @Override
         public void load(int index, int size, Batch batch) {
+            Matrix.zero(batch.expectedMatrix);
             for (int i = 0; i < size; i++) {
                 int flowerIndex = samples[index + i];
                 int x = flowerIndex % WIDTH;
                 int y = flowerIndex / WIDTH;
-                batch.inputs[0][i] = x / (float) WIDTH;
-                batch.inputs[1][i] = y / (float) HEIGHT;
+                batch.inputs[0][i] = x / (double) WIDTH;
+                batch.inputs[1][i] = y / (double) HEIGHT;
                 int flower = flowers[flowerIndex];
-                for (int output = 0; output < network.outputs(); output++) {
-                    batch.expected[output][i] = output == flower ? 1 : 0;
-                }
+                batch.expectedIndices[i] = flower;
+                batch.expectedMatrix[flower][i] = 1;
             }
         }
     }
