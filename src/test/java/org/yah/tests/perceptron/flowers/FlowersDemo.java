@@ -6,11 +6,13 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import org.yah.tests.perceptron.AbstractGLDemo;
+import org.yah.tests.perceptron.Batch;
+import org.yah.tests.perceptron.Batch.BatchSource;
 import org.yah.tests.perceptron.GLDemoLauncher;
+import org.yah.tests.perceptron.JavaNeuralNetwork;
 import org.yah.tests.perceptron.Labels;
 import org.yah.tests.perceptron.Matrix;
 import org.yah.tests.perceptron.NeuralNetwork;
-import org.yah.tests.perceptron.NeuralNetwork.Batch;
 
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
@@ -38,9 +40,7 @@ public class FlowersDemo extends AbstractGLDemo {
     private int[] SAMPLED_FLOWER_COLORS = { 0x000000ff, 0x000000ff };
 
     private double[][] allFlowers = new double[2][FLOWERS]; // inputs = LAYERS[0] x flowers
-    private double[][] outputs = new double[2][FLOWERS]; // outputs = LAYERS[-1] x flowers
-
-    private final int[] evaluatedFlowers = new int[FLOWERS];
+    private int[] outputs = new int[FLOWERS]; // outputs = LAYERS[-1] x flowers
 
     private FlowerBatchSource batchSource;
 
@@ -60,8 +60,8 @@ public class FlowersDemo extends AbstractGLDemo {
         super.create();
         executor = Executors.newSingleThreadExecutor();
         createBuffer(WIDTH, HEIGHT);
-        random = NeuralNetwork.RANDOM;
-        network = new NeuralNetwork(LAYERS);
+        random = JavaNeuralNetwork.RANDOM;
+        network = new JavaNeuralNetwork(LAYERS);
         batchSource = new FlowerBatchSource(SAMPLES, BATCH_SIZE);
         executor.submit(this::createFlowers);
     }
@@ -79,7 +79,7 @@ public class FlowersDemo extends AbstractGLDemo {
     }
 
     private void createFlowers() {
-        long seed = NeuralNetwork.seed();
+        long seed = JavaNeuralNetwork.seed();
         OpenSimplexNoise noise = new OpenSimplexNoise(seed < 0 ? System.currentTimeMillis() : seed);
         int flowerIndex = 0;
         for (int y = 0; y < HEIGHT; y++) {
@@ -116,19 +116,16 @@ public class FlowersDemo extends AbstractGLDemo {
     private void evaluate() {
         long elapsed = System.currentTimeMillis() - lastLog;
         if (elapsed > 500) {
-            network.propagate(allFlowers, outputs);
-            synchronized (evaluatedFlowers) {
-                for (int flowerIndex = 0; flowerIndex < FLOWERS; flowerIndex++) {
-                    evaluatedFlowers[flowerIndex] = Matrix.maxRowIndex(outputs, flowerIndex);
-                }
+            synchronized (outputs) {
+                network.propagate(allFlowers, outputs);
             }
             schedule(this::renderFlowers);
 
-            double accuracy = Labels.countMatched(flowers, evaluatedFlowers) / (double) FLOWERS;
+            double overallAccuracy = Labels.countMatched(flowers, outputs) / (double) FLOWERS;
             double es = elapsed / 1000.0;
-            System.out
-                    .println(String.format("%.2f%% %.2f e/s %.2f Ms/s", accuracy * 100, epoch / es,
-                            (epoch * SAMPLES / 1000000.0) / es));
+            System.out.println(String.format("%.2f%%(%.2f%%) %.2f e/s %.2f Ms/s",
+                    overallAccuracy * 100, network.accuracy(),
+                    epoch / es, (epoch * SAMPLES / 1000000.0) / es));
             lastLog = System.currentTimeMillis();
             epoch = 0;
         }
@@ -139,7 +136,7 @@ public class FlowersDemo extends AbstractGLDemo {
             while (!destroyed) {
                 while (paused)
                     Thread.sleep(100);
-                network.train(network.batchIterator(batchSource), LEARNING_RATE);
+                network.train(Batch.iterator(network, batchSource), LEARNING_RATE);
                 epoch++;
                 evaluate();
             }
@@ -149,7 +146,7 @@ public class FlowersDemo extends AbstractGLDemo {
     }
 
     private void renderFlowers(Pixmap pixmap) {
-        synchronized (evaluatedFlowers) {
+        synchronized (outputs) {
             for (int y = 0; y < HEIGHT; y++) {
                 for (int x = 0; x < WIDTH; x++) {
                     int flowerIndex = y * WIDTH + x;
@@ -157,7 +154,7 @@ public class FlowersDemo extends AbstractGLDemo {
                     int flowerColor;
                     if (batchSource.sampled.get(flowerIndex))
                         flowerColor = SAMPLED_FLOWER_COLORS[flower];
-                    else if (evaluatedFlowers[flowerIndex] != flower)
+                    else if (outputs[flowerIndex] != flower)
                         flowerColor = DARKER_FLOWER_COLORS[flower];
                     else
                         flowerColor = FLOWER_COLORS[flower];
@@ -167,7 +164,7 @@ public class FlowersDemo extends AbstractGLDemo {
         }
     }
 
-    private class FlowerBatchSource implements NeuralNetwork.BatchSource {
+    private class FlowerBatchSource implements BatchSource {
 
         private final int[] samples;
 

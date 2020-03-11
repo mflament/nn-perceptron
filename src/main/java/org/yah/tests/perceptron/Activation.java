@@ -9,7 +9,8 @@ public class Activation {
     public static void sigmoid(double[][] in, double[][] out) {
         for (int r = 0; r < in.length; r++) {
             for (int c = 0; c < in[r].length; c++) {
-                out[r][c] = sigmoid(in[r][c]);
+               // out[r][c] = sigmoid(in[r][c]);
+                out[r][c] = 1.0 / (1.0 + exp(-in[r][c]));
             }
         }
     }
@@ -20,7 +21,7 @@ public class Activation {
 
     public static double sigmoid_prime(double v) {
         double sv = sigmoid(v);
-        return sv * (1.0f - sv);
+        return sv * (1.0 - sv);
     }
 
     public static double exp(double val) {

@@ -14,8 +14,9 @@ import org.openjdk.jmh.annotations.Mode;
 import org.openjdk.jmh.annotations.OutputTimeUnit;
 import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.Setup;
+import org.yah.tests.perceptron.Batch;
+import org.yah.tests.perceptron.JavaNeuralNetwork;
 import org.yah.tests.perceptron.NeuralNetwork;
-import org.yah.tests.perceptron.NeuralNetwork.Batch;
 
 /**
  * @author Yah
@@ -34,7 +35,7 @@ public class TrainingBenchmark {
         Batch batch;
         @Setup(Level.Trial)
         public void setup() {
-            network = new NeuralNetwork(2, 2, 2);
+            network = new JavaNeuralNetwork(2, 2, 2);
             batch = new Batch(transpose(INPUTS), OUTPUTS, network.outputs());
         }
     }

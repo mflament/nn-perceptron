@@ -32,4 +32,30 @@ public class Labels {
         }
         return matched;
     }
+    
+    public static double accuracy(double[][] outputs, double[][] expected) {
+        int samples = outputs[0].length;
+        int[] indices = new int[samples];
+        Labels.toExpectedIndex(expected, indices);
+        return accuracy(outputs, indices);
+    }
+
+    public static double accuracy(double[][] outputs, int[] expected) {
+        int samples = outputs[0].length;
+        int macthed = 0;
+        for (int sample = 0; sample < samples; sample++) {
+            if (expected[sample] == Matrix.maxRowIndex(outputs, sample))
+                macthed++;
+        }
+        return macthed / (double) samples;
+    }
+    
+    public static double accuracy(int[] outputs, int[] expected) {
+        int matched = 0;
+        for (int i = 0; i < expected.length; i++) {
+            if (expected[i] == outputs[i]) matched++;
+        }
+        return matched / outputs.length;
+    }
+
 }

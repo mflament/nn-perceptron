@@ -36,21 +36,5 @@ public class Matrix {
         }
     }
 
-    public static double accuracy(double[][] outputs, double[][] expected) {
-        int samples = outputs[0].length;
-        int[] indices = new int[samples];
-        Labels.toExpectedIndex(expected, indices);
-        return accuracy(outputs, indices);
-    }
-
-    public static double accuracy(double[][] outputs, int[] expected) {
-        int samples = outputs[0].length;
-        int macthed = 0;
-        for (int sample = 0; sample < samples; sample++) {
-            if (expected[sample] == maxRowIndex(outputs, sample))
-                macthed++;
-        }
-        return macthed / (double) samples;
-    }
 
 }
