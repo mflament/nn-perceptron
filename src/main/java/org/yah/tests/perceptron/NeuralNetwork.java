@@ -22,10 +22,10 @@ public interface NeuralNetwork<M extends Matrix<M>> {
         return evaluate(batch, null);
     }
 
-    double train(Batch<M> batch, double learningRate);
+    double evaluate(Iterator<Batch<M>> batches);
 
-    double train(Iterator<Batch<M>> batchIter, double learningRate);
+    void train(Batch<M> batch, double learningRate);
 
-    double accuracy();
+    void train(Iterator<Batch<M>> batches, double learningRate);
 
 }

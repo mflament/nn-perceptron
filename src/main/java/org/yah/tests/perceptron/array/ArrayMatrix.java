@@ -20,8 +20,6 @@ public class ArrayMatrix implements Matrix<ArrayMatrix> {
     private int columns;
 
     public ArrayMatrix(int rows, int columns) {
-        System.out.println(Thread.currentThread().getName() + " new ArrayMatrix[" + rows + "]["
-                + columns + "]");
         this.data = new double[columns][rows];
         this.columns = columns;
     }

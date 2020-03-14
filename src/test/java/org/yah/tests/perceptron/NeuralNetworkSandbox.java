@@ -5,10 +5,7 @@ import org.yah.tests.perceptron.array.ArrayMatrix;
 
 public class NeuralNetworkSandbox<M extends Matrix<M>> {
 
-    private static final double[][] INPUTS = { { 0, 0 }, { 0, 1 }, { 1, 0 }, { 1, 1 } };
-    private static final int[] OUTPUTS = { 0, 1, 1, 0 };
-
-    private static final int LOG_INTERVAL = 2000000;
+    private static final long LOG_INTERVAL = 1000;
     private static final double NS_MS = 1E-6;
 
     private MatrixNeuralNetwork<M> network;
@@ -19,18 +16,35 @@ public class NeuralNetworkSandbox<M extends Matrix<M>> {
         batchSource = network.createBatchSource();
     }
 
-    public void run() throws InterruptedException {
-        Batch<M> batch = batchSource.createBatch(INPUTS, OUTPUTS, true);
+    public void runXOR() throws InterruptedException {
+        run(new double[][] { { 0, 0 }, { 0, 1 }, { 1, 0 }, { 1, 1 } }, new int[] { 0, 1, 1, 0 });
+    }
+
+    public void runNAND() throws InterruptedException {
+        run(new double[][] { { 0, 0 }, { 0, 1 }, { 1, 0 }, { 1, 1 } }, new int[] { 1, 1, 1, 0 });
+    }
+
+    public void runAND() throws InterruptedException {
+        run(new double[][] { { 0, 0 }, { 0, 1 }, { 1, 0 }, { 1, 1 } }, new int[] { 0, 0, 0, 1 });
+    }
+
+    public void runOR() throws InterruptedException {
+        run(new double[][] { { 0, 0 }, { 0, 1 }, { 1, 0 }, { 1, 1 } }, new int[] { 0, 1, 1, 1 });
+    }
+
+    public void run(double[][] inputs, int[] outputIndices) throws InterruptedException {
+        Batch<M> batch = batchSource.createBatch(inputs, outputIndices, true);
         long start = System.nanoTime();
         System.out.println(network.evaluate(batch));
         int count = 0;
         while (true) {
-            double score = network.train(batch, 0.1f);
+            network.train(batch, 0.1f);
             count++;
-            if (count == LOG_INTERVAL) {
-                double elapsed = (System.nanoTime() - start) * NS_MS;
+            double elapsed = (System.nanoTime() - start) * NS_MS;
+            if (elapsed > LOG_INTERVAL) {
+                double score = network.evaluate(batch);
                 System.out.println(
-                        String.format("score: %.2f b/ms: %.3f", score, LOG_INTERVAL / elapsed));
+                        String.format("score: %.2f b/ms: %.3f", score, count / elapsed));
                 count = 0;
                 start = System.nanoTime();
             }
@@ -38,7 +52,8 @@ public class NeuralNetworkSandbox<M extends Matrix<M>> {
     }
 
     public static void main(String[] args) throws InterruptedException {
-        NeuralNetworkSandbox<ArrayMatrix> sb = new NeuralNetworkSandbox<>(ArrayMatrix::new, 2, 2, 2);
-        sb.run();
+        NeuralNetworkSandbox<ArrayMatrix> sb = new NeuralNetworkSandbox<>(ArrayMatrix::new, 2, 2,
+                2);
+        sb.runNAND();
     }
 }

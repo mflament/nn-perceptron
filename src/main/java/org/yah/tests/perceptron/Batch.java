@@ -8,7 +8,7 @@ public interface Batch<M extends Matrix<M>> {
     default int size() {
         return inputs().columns();
     }
-    
+
     /**
      * @return index of this batch in dataset
      */
@@ -29,14 +29,17 @@ public interface Batch<M extends Matrix<M>> {
      */
     M expectedIndices();
 
-    default double accuracy(M outputs) {
+    default double accuracy(M outputs, int[] outputIndices) {
         int matched = 0;
         int samples = outputs.columns();
         M expectedIndices = expectedIndices();
         assert samples == expectedIndices.columns();
         for (int sample = 0; sample < samples; sample++) {
-            if (expectedIndices.get(0, sample) == outputs.maxRowIndex(sample))
+            int outputIndex = outputs.maxRowIndex(sample);
+            if (expectedIndices.get(0, sample) == outputIndex)
                 matched++;
+            if (outputIndices != null)
+                outputIndices[sample] = outputIndex;
         }
         return matched / (double) samples;
     }

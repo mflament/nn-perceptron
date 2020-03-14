@@ -19,14 +19,13 @@ public class MatrixBatchSource<M extends Matrix<M>> implements BatchSource<M> {
     }
 
     @Override
-    public Iterable<Batch<M>> createBatches(double[][] inputs, int[] expecteds, int batchSize,
+    public TrainingSet<M> createBatches(double[][] inputs, int[] expecteds, int batchSize,
             boolean transposeInputs) {
         M inputsMatrix = createInputs(inputs, transposeInputs);
         checkExpecteds(expecteds, inputsMatrix.columns());
         M expectedOutputs = createOutputs(expecteds);
         M expectedIndices = createExpectedIndices(expecteds);
-        return () -> new MatrixBatchIterator<>(inputsMatrix, expectedOutputs, expectedIndices,
-                batchSize);
+        return new MatrixTrainingSet<>(batchSize, inputsMatrix, expectedOutputs, expectedIndices);
     }
 
     @Override
@@ -35,27 +34,7 @@ public class MatrixBatchSource<M extends Matrix<M>> implements BatchSource<M> {
         checkExpecteds(expecteds, inputsMatrix.columns());
         M expectedOutputs = createOutputs(expecteds);
         M expectedIndices = createExpectedIndices(expecteds);
-        return new Batch<M>() {
-            @Override
-            public int index() {
-                return 0;
-            }
-
-            @Override
-            public M inputs() {
-                return inputsMatrix;
-            }
-
-            @Override
-            public M expectedOutputs() {
-                return expectedOutputs;
-            }
-
-            @Override
-            public M expectedIndices() {
-                return expectedIndices;
-            }
-        };
+        return new MatrixBatch<>(inputsMatrix, expectedOutputs, expectedIndices);
     }
 
     private M createInputs(double[][] inputs, boolean transpose) {
@@ -94,6 +73,36 @@ public class MatrixBatchSource<M extends Matrix<M>> implements BatchSource<M> {
         return res;
     }
 
+    private static final class MatrixTrainingSet<M extends Matrix<M>> implements TrainingSet<M> {
+        private final M inputs;
+        private final M expectedOutputs;
+        private final M expectedIndices;
+        private final int batchSize;
+
+        public MatrixTrainingSet(int batchSize, M inputs, M expectedOutputs, M expectedIndices) {
+            this.inputs = inputs;
+            this.expectedOutputs = expectedOutputs;
+            this.expectedIndices = expectedIndices;
+            this.batchSize= batchSize;
+        }
+
+        @Override
+        public Iterator<Batch<M>> iterator() {
+            return new MatrixBatchIterator<>(inputs, expectedOutputs, expectedIndices, batchSize);
+        }
+
+        @Override
+        public int samples() {
+            return inputs.columns();
+        }
+
+        @Override
+        public int batchSize() {
+            return batchSize;
+        }
+        
+    }
+    
     private static final class MatrixBatchIterator<M extends Matrix<M>>
             implements Iterator<Batch<M>> {
 
@@ -154,8 +163,10 @@ public class MatrixBatchSource<M extends Matrix<M>> implements BatchSource<M> {
 
         public int slide(int offset, int columns, int index) {
             int actualColumns = inputs.slide(offset, columns);
-            expectedOutputs.slide(offset, columns);
-            expectedIndices.slide(offset, columns);
+            int s = expectedOutputs.slide(offset, columns);
+            assert s == actualColumns;
+            s = expectedIndices.slide(offset, columns);
+            assert s == actualColumns;
             this.index = index;
             return actualColumns;
         }

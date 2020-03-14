@@ -3,8 +3,7 @@
  */
 package org.yah.tests.perceptron;
 
-import static org.yah.tests.perceptron.Activation.sigmoid;
-
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.Objects;
 import java.util.Random;
@@ -45,7 +44,6 @@ public class MatrixNeuralNetwork<M extends Matrix<M>> implements NeuralNetwork<M
     protected final int layers;
     private final M[] weights;
     private final M[] biases;
-    protected double accuracy = Double.NaN;
 
     @FunctionalInterface
     public interface MatrixFactory<M> {
@@ -112,34 +110,45 @@ public class MatrixNeuralNetwork<M extends Matrix<M>> implements NeuralNetwork<M
     }
 
     @Override
-    public double accuracy() {
-        return accuracy;
-    }
-
-    @Override
     public void propagate(M inputs, int[] outputs) {
         contexts.get().propagate(inputs, outputs);
     }
 
     @Override
     public double evaluate(Batch<M> batch, int[] outputs) {
-        return accuracy = contexts.get().evaluate(batch, outputs);
+        return contexts.get().evaluate(batch, outputs);
     }
 
     @Override
-    public double train(Batch<M> batch, double learningRate) {
-        accuracy = contexts.get().train(batch, learningRate);
-        return accuracy;
+    public String toString() {
+        return Arrays.toString(layerSizes);
     }
 
     @Override
-    public double train(Iterator<Batch<M>> batchIter, double learningRate) {
+    public double evaluate(Iterator<Batch<M>> batches) {
         BatchContext context = contexts.get();
-        while (batchIter.hasNext()) {
-            Batch<M> batch = batchIter.next();
-            accuracy = context.train(batch, learningRate);
+        double total = 0;
+        int count = 0;
+        while (batches.hasNext()) {
+            Batch<M> batch = batches.next();
+            total += context.evaluate(batch, null);
+            count++;
         }
-        return accuracy;
+        return total / count;
+    }
+
+    @Override
+    public void train(Batch<M> batch, double learningRate) {
+        contexts.get().train(batch, learningRate);
+    }
+
+    @Override
+    public void train(Iterator<Batch<M>> batches, double learningRate) {
+        BatchContext context = contexts.get();
+        while (batches.hasNext()) {
+            Batch<M> batch = batches.next();
+            context.train(batch, learningRate);
+        }
     }
 
     protected class BatchContext {
@@ -193,25 +202,14 @@ public class MatrixNeuralNetwork<M extends Matrix<M>> implements NeuralNetwork<M
             }
         }
 
-        public double evaluate(Batch<M> batch, int[] outputs) {
-            setBatchSize(batch.size());
-            M inputs = batch.inputs();
-            for (int layer = 0; layer < layers; layer++) {
-                inputs = forward(layer, inputs);
-            }
-            double res = batch.accuracy(inputs);
-            if (outputs != null) {
-                for (int i = 0; i < outputs.length; i++) {
-                    outputs[i] = inputs.maxRowIndex(i);
-                }
-            }
-            return res;
+        public double evaluate(Batch<M> batch, int[] outputIndices) {
+            M outputs = forward(batch);
+            return batch.accuracy(outputs, outputIndices);
         }
 
-        public double train(Batch<M> batch, double learningRate) {
-            setBatchSize(batch.size());
+        public void train(Batch<M> batch, double learningRate) {
             // forward propagation
-            double res = evaluate(batch, null);
+            forward(batch);
 
             // backward propagation
             // compute gradients
@@ -228,20 +226,22 @@ public class MatrixNeuralNetwork<M extends Matrix<M>> implements NeuralNetwork<M
             for (int layer = 0; layer < layers; layer++) {
                 updateNetwork(layer, learningRate);
             }
-            return res;
         }
 
-        private void costDerivative(M expected) {
-            M actual = activations[layers - 1];
-            actual.sub(expected);
+        private M forward(Batch<M> batch) {
+            setBatchSize(batch.size());
+            M inputs = batch.inputs();
+            for (int layer = 0; layer < layers; layer++) {
+                inputs = forward(layer, inputs);
+            }
+            return inputs;
         }
 
         public M forward(int layer, M inputs) {
             // weight . inputs + bias
             weights[layer].dot(inputs, zs[layer]);
             zs[layer].addColumnVector(biases[layer]);
-            zs[layer].sigmoid(activations[layer]);
-            return activations[layer];
+            return zs[layer].sigmoid(activations[layer]);
         }
 
         public void backward(int layer, M inputs) {
@@ -261,6 +261,11 @@ public class MatrixNeuralNetwork<M extends Matrix<M>> implements NeuralNetwork<M
                 // delta = T(W[layer]) . delta
                 weights[layer].transpose_dot(activation, activations[layer - 1]);
             }
+        }
+
+        private void costDerivative(M expected) {
+            M actual = activations[layers - 1];
+            actual.sub(expected);
         }
 
         public void updateNetwork(int layer, double learningRate) {
