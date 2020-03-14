@@ -2,11 +2,7 @@ package org.yah.tests.perceptron;
 
 import java.util.Iterator;
 
-public interface NeuralNetwork {
-
-    double[][] weights(int layer);
-
-    double[] biases(int layer);
+public interface NeuralNetwork<M extends Matrix<M>> {
 
     int layers();
 
@@ -18,11 +14,17 @@ public interface NeuralNetwork {
 
     int neurons(int layer);
 
-    void propagate(double[][] inputs, int[] outputs);
+    void propagate(M inputs, int[] outputs);
 
-    double train(Batch batch, double learningRate);
+    double evaluate(Batch<M> batch, int[] outputs);
 
-    double train(Iterator<Batch> batchIter, double learningRate);
+    default double evaluate(Batch<M> batch) {
+        return evaluate(batch, null);
+    }
+
+    double train(Batch<M> batch, double learningRate);
+
+    double train(Iterator<Batch<M>> batchIter, double learningRate);
 
     double accuracy();
 

@@ -4,15 +4,13 @@
 package org.yah.tests.perceptron;
 
 import java.nio.IntBuffer;
-import java.util.function.Consumer;
+import java.util.LinkedList;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.InputAdapter;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
 import com.badlogic.gdx.graphics.Pixmap;
-import com.badlogic.gdx.graphics.Texture;
-import com.badlogic.gdx.graphics.Pixmap.Format;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.math.Matrix4;
 
@@ -20,17 +18,10 @@ import com.badlogic.gdx.math.Matrix4;
  * @author Yah
  *
  */
-public class AbstractGLDemo extends InputAdapter implements GLDemo {
-
-    private static final Format TEXTURE_FORMAT = Format.RGBA8888;
+public abstract class AbstractGLDemo extends InputAdapter implements GLDemo {
 
     protected SpriteBatch spriteBatch;
-
-    private Pixmap buffer;
-
-    private Texture texture;
-
-    private Consumer<Pixmap> nextUpdater;
+    private final LinkedList<Runnable> scheduledTasks = new LinkedList<Runnable>();
     private int width, height;
 
     @Override
@@ -39,15 +30,21 @@ public class AbstractGLDemo extends InputAdapter implements GLDemo {
         width = Gdx.graphics.getWidth();
         height = Gdx.graphics.getHeight();
         Gdx.input.setInputProcessor(this);
-        
+
     }
 
-    protected final synchronized void schedule(Consumer<Pixmap> nextUpdater) {
-        this.nextUpdater = nextUpdater;
+    protected final void schedule(Runnable task) {
+        synchronized (scheduledTasks) {
+            scheduledTasks.addLast(task);
+        }
     }
 
     @Override
     public String getTitle() { return getClass().getSimpleName(); }
+    
+    public int getWidth() { return width; }
+    
+    public int getHeight() { return height; }
 
     @Override
     public void dispose() {
@@ -56,27 +53,25 @@ public class AbstractGLDemo extends InputAdapter implements GLDemo {
 
     @Override
     public void render() {
-        if (texture == null) return;
-
-        Consumer<Pixmap> updater = popUpdater();
-        if (updater != null) {
-            updater.accept(buffer);
-            texture.draw(buffer, 0, 0);
+        int pendings;
+        synchronized (scheduledTasks) {
+            pendings = scheduledTasks.size();
         }
+
+        for (int i = 0; i < pendings; i++) {
+            Runnable task;
+            synchronized (scheduledTasks) {
+                task = scheduledTasks.pop();
+            }
+            task.run();
+        }
+
         spriteBatch.begin();
         render(spriteBatch);
         spriteBatch.end();
     }
 
-    protected void render(SpriteBatch spriteBatch) {
-        spriteBatch.draw(texture, 0, 0, width, height);
-    }
-
-    private synchronized Consumer<Pixmap> popUpdater() {
-        Consumer<Pixmap> res = nextUpdater;
-        nextUpdater = null;
-        return res;
-    }
+    protected abstract void render(SpriteBatch spriteBatch);
 
     @Override
     public void resize(int width, int height) {
@@ -84,15 +79,6 @@ public class AbstractGLDemo extends InputAdapter implements GLDemo {
         this.height = height;
         spriteBatch.setProjectionMatrix(new Matrix4().setToOrtho2D(0, 0,
                 Gdx.graphics.getWidth(), Gdx.graphics.getHeight()));
-    }
-
-    protected final void createBuffer(int width, int height) {
-        if (buffer != null)
-            buffer.dispose();
-        buffer = new Pixmap(width, height, TEXTURE_FORMAT);
-        if (texture != null)
-            texture.dispose();
-        texture = new Texture(buffer);
     }
 
     @Override

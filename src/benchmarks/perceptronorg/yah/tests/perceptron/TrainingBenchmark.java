@@ -3,7 +3,7 @@
  */
 package perceptronorg.yah.tests.perceptron;
 
-import static org.yah.tests.perceptron.Matrix.transpose;
+import static org.yah.tests.perceptron.array.ArrayMatrix.transpose;
 
 import java.util.concurrent.TimeUnit;
 
@@ -14,9 +14,9 @@ import org.openjdk.jmh.annotations.Mode;
 import org.openjdk.jmh.annotations.OutputTimeUnit;
 import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.Setup;
-import org.yah.tests.perceptron.Batch;
-import org.yah.tests.perceptron.JavaNeuralNetwork;
 import org.yah.tests.perceptron.NeuralNetwork;
+import org.yah.tests.perceptron.array.ArrayBatch;
+import org.yah.tests.perceptron.array.ArrayMatrixNeuralNetwork;
 
 /**
  * @author Yah
@@ -30,18 +30,18 @@ public class TrainingBenchmark {
     private static final int[] OUTPUTS = { 0, 1, 1, 0 };
 
     @org.openjdk.jmh.annotations.State(Scope.Benchmark)
-    public static class TrainingInput {
+    public static class ArrayNetworkInput {
         NeuralNetwork network;
-        Batch batch;
+        ArrayBatch batch;
         @Setup(Level.Trial)
         public void setup() {
-            network = new JavaNeuralNetwork(2, 2, 2);
-            batch = new Batch(transpose(INPUTS), OUTPUTS, network.outputs());
+            network = new ArrayMatrixNeuralNetwork(2, 2, 2);
+            batch = new ArrayBatch(transpose(INPUTS), OUTPUTS, network.outputs());
         }
     }
-
+    
     @Benchmark
-    public void training(TrainingInput input) {
+    public void array_training(ArrayNetworkInput input) {
         input.network.train(input.batch, 0.1);
     }
 

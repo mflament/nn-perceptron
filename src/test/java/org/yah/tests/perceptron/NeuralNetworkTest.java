@@ -3,12 +3,14 @@ package org.yah.tests.perceptron;
 import static org.junit.Assert.assertEquals;
 
 import org.junit.Test;
+import org.yah.tests.perceptron.array.ArrayMatrix;
+
 public class NeuralNetworkTest {
 
-    protected NeuralNetwork newNetwork(int... layerSizes) {
-        return new JavaNeuralNetwork(layerSizes);
+    protected NeuralNetwork<ArrayMatrix> newNetwork(int... layerSizes) {
+        return new MatrixNeuralNetwork<>(ArrayMatrix::new, layerSizes);
     }
-    
+
     @Test
     public void testLayers() {
         assertEquals(1, newNetwork(2, 2).layers());
@@ -53,6 +55,5 @@ public class NeuralNetworkTest {
         assertEquals(4, newNetwork(3, 4, 4, 8).neurons(1));
         assertEquals(8, newNetwork(3, 4, 4, 8).neurons(2));
     }
-
 
 }
