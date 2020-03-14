@@ -9,6 +9,7 @@ import org.lwjgl.BufferUtils;
 import org.yah.tests.perceptron.AbstractGLDemo;
 import org.yah.tests.perceptron.Batch;
 import org.yah.tests.perceptron.BatchSource;
+import org.yah.tests.perceptron.BatchSource.TrainingSet;
 import org.yah.tests.perceptron.GLDemoLauncher;
 import org.yah.tests.perceptron.Matrix;
 import org.yah.tests.perceptron.MatrixNeuralNetwork;
@@ -33,10 +34,10 @@ public class FlowersDemo<M extends Matrix<M>> extends AbstractGLDemo {
 
     private static final int FLOWERS = WIDTH * HEIGHT;
 
-    private static final int[] LAYERS = { 2, 8, 2 };
-    private static final int SAMPLES = (int) (FLOWERS * 0.01);
+    private static final int[] LAYERS = { 2, 16, 2 };
+    private static final int SAMPLES = (int) (FLOWERS * 0.005);
     private static final int BATCH_SIZE = 64;
-    private static final double LEARNING_RATE = 0.3f;
+    private static final double LEARNING_RATE = 0.5f;
 
     private ExecutorService executor;
 
@@ -48,15 +49,15 @@ public class FlowersDemo<M extends Matrix<M>> extends AbstractGLDemo {
     private int[] randomFlowers = new int[FLOWERS];
     private int[] outputs = new int[FLOWERS];
 
-    private Batch<M> allFlowersBatch;
-    private Iterable<Batch<M>> trainingBatches;
-
     private NeuralNetwork<M> network;
+    private boolean paused = true;
+    private boolean destroyed;
     private long lastLog;
     private long epoch;
 
-    private boolean paused = true;
-    private boolean destroyed;
+    private Batch<M> allFlowersBatch;
+    private TrainingSet<M> trainingSet;
+
     private Texture texture;
     private FlowersTextureData textureData;
 
@@ -73,30 +74,44 @@ public class FlowersDemo<M extends Matrix<M>> extends AbstractGLDemo {
         textureData = new FlowersTextureData();
         texture = new Texture(textureData);
 
-        MatrixNeuralNetwork<M> mnn = new MatrixNeuralNetwork<>(matrixFactory, LAYERS);
-        network = mnn;
+        MatrixNeuralNetwork<M> network = new MatrixNeuralNetwork<>(matrixFactory, LAYERS);
+        this.network = network;
+
+        BatchSource<M> batchSource = network.createBatchSource();
         createFlowers();
-        BatchSource<M> batchSource = mnn.createBatchSource();
-        double[][] inputs = new double[2][FLOWERS];
+        createFlowersBatch(batchSource);
+        createTrainingBatches(batchSource);
+
+        System.out.println("Flowers demo config:");
+        System.out.println("  Network: " + network);
+        System.out.println("  flowers: " + allFlowersBatch.size());
+        System.out.println(String.format("  samples: %d (%d x %d), %s%%", trainingSet.samples(),
+                trainingSet.batchCount(), trainingSet.batchSize(),
+                trainingSet.samples() / (double) allFlowersBatch.size() * 100.0));
+        executor.submit(this::trainingLoop);
+    }
+
+    private void createFlowersBatch(BatchSource<M> batchSource) {
+        double[][] inputs = new double[FLOWERS][2];
         int flowerIndex = 0;
         for (int y = 0; y < HEIGHT; y++) {
             double dy = y / (double) HEIGHT;
             for (int x = 0; x < WIDTH; x++) {
-                inputs[0][flowerIndex] = x / (double) WIDTH;
-                inputs[1][flowerIndex] = dy;
+                double[] flower = inputs[flowerIndex];
+                flower[0] = x / (double) WIDTH;
+                flower[1] = dy;
                 flowerIndex++;
             }
         }
-        allFlowersBatch = batchSource.createBatch(inputs, flowers);
+        allFlowersBatch = batchSource.createBatch(inputs, flowers, true);
+    }
 
+    private void createTrainingBatches(BatchSource<M> batchSource) {
+        int flowerIndex;
         int samples = Math.min(FLOWERS, SAMPLES);
-        inputs = new double[2][samples];
-        Random random = MatrixNeuralNetwork.RANDOM;
-        for (int i = 0; i < randomFlowers.length; i++)
-            randomFlowers[i] = i;
-        for (int i = 0; i < randomFlowers.length; i++)
-            swap(randomFlowers, i, random.nextInt(FLOWERS));
+        double[][] inputs = new double[2][samples];
         int[] expecteds = new int[samples];
+        randomizeFlowers();
         for (int sample = 0; sample < samples; sample++) {
             flowerIndex = randomFlowers[sample];
             int x = flowerIndex % WIDTH;
@@ -105,8 +120,15 @@ public class FlowersDemo<M extends Matrix<M>> extends AbstractGLDemo {
             inputs[1][sample] = y / (double) HEIGHT;
             expecteds[sample] = flowers[flowerIndex];
         }
-        trainingBatches = batchSource.createBatches(inputs, expecteds, BATCH_SIZE);
-        executor.submit(this::trainingLoop);
+        trainingSet = batchSource.createBatches(inputs, expecteds, BATCH_SIZE);
+    }
+
+    private void randomizeFlowers() {
+        Random random = MatrixNeuralNetwork.RANDOM;
+        for (int i = 0; i < randomFlowers.length; i++)
+            randomFlowers[i] = i;
+        for (int i = 0; i < randomFlowers.length; i++)
+            swap(randomFlowers, i, random.nextInt(randomFlowers.length));
     }
 
     @Override
@@ -139,9 +161,6 @@ public class FlowersDemo<M extends Matrix<M>> extends AbstractGLDemo {
                 flowers[flowerIndex++] = (int) (n + 0.5);
             }
         }
-        System.out
-                .println(String.format("Created %d flowers, using %d (%.3f%%) samples for training",
-                        FLOWERS, SAMPLES, (SAMPLES / (double) FLOWERS * 100.0)));
     }
 
     @Override
@@ -159,7 +178,7 @@ public class FlowersDemo<M extends Matrix<M>> extends AbstractGLDemo {
         try {
             double overallAccuracy = network.evaluate(allFlowersBatch, outputs);
             schedule(this::renderFlowers);
-            System.out.println(String.format("%.2f%%", overallAccuracy * 100));
+            System.out.println(String.format("%f%%", overallAccuracy * 100));
 
             lastLog = System.currentTimeMillis();
             while (!destroyed) {
@@ -171,7 +190,7 @@ public class FlowersDemo<M extends Matrix<M>> extends AbstractGLDemo {
                 if (destroyed)
                     return;
 
-                double accuracy = network.train(trainingBatches.iterator(), LEARNING_RATE);
+                network.train(trainingSet.iterator(), LEARNING_RATE);
                 epoch++;
 
                 long elapsed = System.currentTimeMillis() - lastLog;
@@ -182,9 +201,11 @@ public class FlowersDemo<M extends Matrix<M>> extends AbstractGLDemo {
 //                    }
 //                    schedule(this::renderFlowers);
                     long samples = epoch * SAMPLES;
-                    System.out.println(String.format("%.2f%%(%.2f%%) %.2f e/ms %.2f s/ms",
-                            overallAccuracy * 100, accuracy * 100,
-                            epoch / (double) elapsed,
+                    double accuracy = network.evaluate(trainingSet.iterator());
+                    System.out.println(String.format(
+                            "training accuracy: %.2f%%; overall accuracy: %.2f%%; e/s: %.2f; s/ms: %.2f",
+                            accuracy * 100, overallAccuracy * 100,
+                            epoch / (elapsed / 1000.0),
                             samples / (double) elapsed));
                     lastLog = System.currentTimeMillis();
                     epoch = 0;
