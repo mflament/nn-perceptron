@@ -183,7 +183,7 @@ public class ArrayMatrix implements Matrix<ArrayMatrix> {
             for (int tr = 0; tr < trows; tr++) {
                 tcol[tr] = 0;
                 for (int i = 0; i < pc; i++) {
-                    tcol[tr] += data[i + colOffset][tr] * b.data[i + colOffset][tc];
+                    tcol[tr] += data[i + colOffset][tr] * b.data[i + b.colOffset][tc];
                 }
             }
         }
@@ -263,7 +263,7 @@ public class ArrayMatrix implements Matrix<ArrayMatrix> {
         int rows = rows();
         assert target.rows() == rows;
         assert target.columns == 1;
-        double[] tcol = target.data[colOffset];
+        double[] tcol = target.data[target.colOffset];
         Arrays.fill(tcol, 0);
         for (int c = 0; c < columns; c++) {
             double[] col = data[c + colOffset];

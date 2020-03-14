@@ -195,11 +195,10 @@ public class FlowersDemo<M extends Matrix<M>> extends AbstractGLDemo {
 
                 long elapsed = System.currentTimeMillis() - lastLog;
                 if (elapsed > 1000) {
-//                    double overallAccuracy;
-//                    synchronized (outputs) {
-//                        overallAccuracy = network.evaluate(allFlowersBatch, outputs);
-//                    }
-//                    schedule(this::renderFlowers);
+                    synchronized (outputs) {
+                        overallAccuracy = network.evaluate(allFlowersBatch, outputs);
+                    }
+                    schedule(this::renderFlowers);
                     long samples = epoch * SAMPLES;
                     double accuracy = network.evaluate(trainingSet.iterator());
                     System.out.println(String.format(

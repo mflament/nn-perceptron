@@ -83,7 +83,7 @@ public class MatrixBatchSource<M extends Matrix<M>> implements BatchSource<M> {
             this.inputs = inputs;
             this.expectedOutputs = expectedOutputs;
             this.expectedIndices = expectedIndices;
-            this.batchSize= batchSize;
+            this.batchSize = batchSize;
         }
 
         @Override
@@ -100,9 +100,9 @@ public class MatrixBatchSource<M extends Matrix<M>> implements BatchSource<M> {
         public int batchSize() {
             return batchSize;
         }
-        
+
     }
-    
+
     private static final class MatrixBatchIterator<M extends Matrix<M>>
             implements Iterator<Batch<M>> {
 
@@ -129,7 +129,8 @@ public class MatrixBatchSource<M extends Matrix<M>> implements BatchSource<M> {
         }
 
         private MatrixBatch<M> newBatch() {
-            return new MatrixBatch<>(inputs.createView(), expectedOutputs.createView(),
+            return new MatrixBatch<>(inputs.createView(),
+                    expectedOutputs.createView(),
                     expectedIndices.createView());
         }
 
@@ -162,13 +163,13 @@ public class MatrixBatchSource<M extends Matrix<M>> implements BatchSource<M> {
         }
 
         public int slide(int offset, int columns, int index) {
-            int actualColumns = inputs.slide(offset, columns);
+            int newSize = inputs.slide(offset, columns);
             int s = expectedOutputs.slide(offset, columns);
-            assert s == actualColumns;
+            assert s == newSize;
             s = expectedIndices.slide(offset, columns);
-            assert s == actualColumns;
+            assert s == newSize;
             this.index = index;
-            return actualColumns;
+            return newSize;
         }
 
         @Override
