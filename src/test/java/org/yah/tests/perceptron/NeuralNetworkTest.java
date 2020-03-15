@@ -8,7 +8,7 @@ import org.yah.tests.perceptron.matrix.array.CMArrayMatrix;
 
 public class NeuralNetworkTest {
 
-    protected NeuralNetwork<?> newNetwork(int... layerSizes) {
+    protected NeuralNetwork newNetwork(int... layerSizes) {
         return new MatrixNeuralNetwork<>(CMArrayMatrix::new, layerSizes);
     }
 

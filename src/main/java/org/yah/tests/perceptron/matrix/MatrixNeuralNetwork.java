@@ -8,14 +8,17 @@ import java.util.Iterator;
 import java.util.Objects;
 import java.util.Random;
 
-import org.yah.tests.perceptron.BatchSource;
+import org.yah.tests.perceptron.InputSamples;
 import org.yah.tests.perceptron.NeuralNetwork;
+import org.yah.tests.perceptron.TrainingSamples;
+import org.yah.tests.perceptron.matrix.MatrixSamplesSource.MatrixBatch;
+import org.yah.tests.perceptron.matrix.MatrixSamplesSource.MatrixSamples;
 
 /**
  * @author Yah
  *
  */
-public class MatrixNeuralNetwork<M extends Matrix<M>> implements NeuralNetwork<MatrixBatch<M>> {
+public class MatrixNeuralNetwork<M extends Matrix<M>> implements NeuralNetwork {
 
     public static final Random RANDOM = createRandom();
 
@@ -75,8 +78,8 @@ public class MatrixNeuralNetwork<M extends Matrix<M>> implements NeuralNetwork<M
     }
 
     @Override
-    public BatchSource<MatrixBatch<M>> createBatchSource() {
-        return new MatrixBatchSource<>(this);
+    public MatrixSamplesSource<M> createSampleSource() {
+        return new MatrixSamplesSource<>(this);
     }
 
     public M newMatrix(int rows, int columns) {
@@ -113,46 +116,27 @@ public class MatrixNeuralNetwork<M extends Matrix<M>> implements NeuralNetwork<M
         return layerSizes[layer + 1];
     }
 
+    @SuppressWarnings("unchecked")
     @Override
-    public void propagate(MatrixBatch<M> inputs, int[] outputs) {
-        contexts.get().propagate(inputs, outputs);
+    public void propagate(InputSamples samples, int[] outputs) {
+        contexts.get().propagate((MatrixSamples<M>) samples, outputs);
     }
 
+    @SuppressWarnings("unchecked")
     @Override
-    public double evaluate(MatrixBatch<M> batch, int[] outputs) {
-        return contexts.get().evaluate(batch, outputs);
+    public double evaluate(TrainingSamples samples, int[] outputs) {
+        return contexts.get().evaluate((MatrixSamples<M>) samples, outputs);
+    }
+
+    @SuppressWarnings("unchecked")
+    @Override
+    public void train(TrainingSamples samples, double learningRate) {
+        contexts.get().train((MatrixSamples<M>) samples, learningRate);
     }
 
     @Override
     public String toString() {
         return Arrays.toString(layerSizes);
-    }
-
-    @Override
-    public double evaluate(Iterator<MatrixBatch<M>> batches) {
-        BatchContext context = contexts.get();
-        double total = 0;
-        int count = 0;
-        while (batches.hasNext()) {
-            MatrixBatch<M> batch = batches.next();
-            total += context.evaluate(batch, null);
-            count++;
-        }
-        return total / count;
-    }
-
-    @Override
-    public void train(MatrixBatch<M> batch, double learningRate) {
-        contexts.get().train(batch, learningRate);
-    }
-
-    @Override
-    public void train(Iterator<MatrixBatch<M>> batches, double learningRate) {
-        BatchContext context = contexts.get();
-        while (batches.hasNext()) {
-            MatrixBatch<M> batch = batches.next();
-            context.train(batch, learningRate);
-        }
     }
 
     protected class BatchContext {
@@ -194,25 +178,57 @@ public class MatrixNeuralNetwork<M extends Matrix<M>> implements NeuralNetwork<M
             this.batchSize = batchSize;
         }
 
-        public void propagate(MatrixBatch<M> batch, int[] outputs) {
-            int size = batch.size();
+        public void propagate(MatrixSamples<M> samples, int[] outputs) {
+            assert outputs != null && outputs.length == samples.size();
+
+            Iterator<MatrixBatch<M>> iterator = samples.iterator();
+            int outputsIndex = 0;
+            while (iterator.hasNext()) {
+                MatrixBatch<M> batch = iterator.next();
+                propagate(batch, outputs, outputsIndex);
+                outputsIndex += batch.size();
+            }
+        }
+
+        public double evaluate(MatrixSamples<M> samples, int[] outputs) {
+            assert outputs == null || outputs.length == samples.size();
+
+            Iterator<MatrixBatch<M>> iterator = samples.iterator();
+            int outputsIndex = 0;
+            double total = 0;
+            while (iterator.hasNext()) {
+                MatrixBatch<M> batch = iterator.next();
+                propagate(batch, outputs, outputsIndex);
+                outputsIndex += batch.size();
+
+                M outputMatrix = forward(batch);
+                total += batch.accuracy(outputMatrix, outputs);
+            }
+            return total / samples.batchCount();
+        }
+
+        private void propagate(MatrixBatch<M> batch, int[] outputs, int outputsIndex) {
             setBatchSize(batch.size());
             M inputs = batch.inputs();
             for (int layer = 0; layer < layers; layer++) {
                 inputs = forward(layer, inputs);
             }
-
-            for (int input = 0; input < size; input++) {
-                outputs[input] = inputs.maxRowIndex(input);
+            if (outputs != null) {
+                for (int col = 0; col < batchSize; col++) {
+                    outputs[outputsIndex + col] = inputs.maxRowIndex(col);
+                }
             }
         }
 
-        public double evaluate(MatrixBatch<M> batch, int[] outputIndices) {
-            M outputs = forward(batch);
-            return batch.accuracy(outputs, outputIndices);
+        public void train(MatrixSamples<M> samples, double learningRate) {
+            Iterator<MatrixBatch<M>> iterator = samples.iterator();
+            while (iterator.hasNext()) {
+                MatrixBatch<M> batch = iterator.next();
+                train(batch, learningRate);
+            }
         }
 
-        public void train(MatrixBatch<M> batch, double learningRate) {
+        private void train(MatrixBatch<M> batch, double learningRate) {
             // forward propagation
             forward(batch);
 

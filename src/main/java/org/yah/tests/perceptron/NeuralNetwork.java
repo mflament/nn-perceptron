@@ -1,8 +1,6 @@
 package org.yah.tests.perceptron;
 
-import java.util.Iterator;
-
-public interface NeuralNetwork<B extends Batch> {
+public interface NeuralNetwork {
 
     int layers();
 
@@ -14,20 +12,12 @@ public interface NeuralNetwork<B extends Batch> {
 
     int neurons(int layer);
     
-    BatchSource<B> createBatchSource();
+    SamplesSource createSampleSource();
 
-    void propagate(B batch, int[] outputs);
+    void propagate(InputSamples samples, int[] outputs);
 
-    double evaluate(B batch, int[] outputs);
+    double evaluate(TrainingSamples samples, int[] outputs);
 
-    default double evaluate(B batch) {
-        return evaluate(batch, null);
-    }
-
-    double evaluate(Iterator<B> batches);
-
-    void train(B batch, double learningRate);
-
-    void train(Iterator<B> batches, double learningRate);
+    void train(TrainingSamples samples, double learningRate);
 
 }

@@ -7,11 +7,11 @@ import java.util.concurrent.Executors;
 
 import org.lwjgl.BufferUtils;
 import org.yah.tests.perceptron.AbstractGLDemo;
-import org.yah.tests.perceptron.Batch;
-import org.yah.tests.perceptron.BatchSource;
-import org.yah.tests.perceptron.BatchSource.TrainingSet;
 import org.yah.tests.perceptron.GLDemoLauncher;
 import org.yah.tests.perceptron.NeuralNetwork;
+import org.yah.tests.perceptron.SamplesProviders.TrainingSamplesProvider;
+import org.yah.tests.perceptron.SamplesSource;
+import org.yah.tests.perceptron.TrainingSamples;
 import org.yah.tests.perceptron.matrix.MatrixNeuralNetwork;
 import org.yah.tests.perceptron.matrix.array.CMArrayMatrix;
 
@@ -24,7 +24,7 @@ import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.TextureData;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 
-public class FlowersDemo<B extends Batch> extends AbstractGLDemo {
+public class FlowersDemo extends AbstractGLDemo implements TrainingSamplesProvider {
 
     private static final int WIDTH = 800;
     private static final int HEIGHT = 600;
@@ -34,6 +34,7 @@ public class FlowersDemo<B extends Batch> extends AbstractGLDemo {
 
     private static final int[] LAYERS = { 2, 16, 2 };
     private static final int SAMPLES = (int) (FLOWERS * 0.005);
+    private static final int EVAL_BATCH_SIZE = 0;
     private static final int BATCH_SIZE = 64;
     private static final double LEARNING_RATE = 0.5f;
 
@@ -47,19 +48,19 @@ public class FlowersDemo<B extends Batch> extends AbstractGLDemo {
     private int[] randomFlowers = new int[FLOWERS];
     private int[] outputs = new int[FLOWERS];
 
-    private final NeuralNetwork<B> network;
+    private final NeuralNetwork network;
     private boolean paused = true;
     private boolean destroyed;
     private long lastLog;
     private long epoch;
 
-    private B allFlowersBatch;
-    private TrainingSet<B> trainingSet;
+    private TrainingSamples allFlowers;
+    private TrainingSamples trainingFlowers;
 
     private Texture texture;
     private FlowersTextureData textureData;
 
-    public FlowersDemo(NeuralNetwork<B> network) {
+    public FlowersDemo(NeuralNetwork network) {
         this.network = network;
     }
 
@@ -70,21 +71,21 @@ public class FlowersDemo<B extends Batch> extends AbstractGLDemo {
         textureData = new FlowersTextureData();
         texture = new Texture(textureData);
 
-        BatchSource<B> batchSource = network.createBatchSource();
+        SamplesSource samplesSource = network.createSampleSource();
         createFlowers();
-        createFlowersBatch(batchSource);
-        createTrainingBatches(batchSource);
+        createFlowersBatch(samplesSource);
+        createTrainingBatches(samplesSource);
 
         System.out.println("Flowers demo config:");
         System.out.println("  Network: " + network);
-        System.out.println("  flowers: " + allFlowersBatch.size());
-        System.out.println(String.format("  samples: %d (%d x %d), %s%%", trainingSet.samples(),
-                trainingSet.batchCount(), trainingSet.batchSize(),
-                trainingSet.samples() / (double) allFlowersBatch.size() * 100.0));
+        System.out.println("  flowers: " + allFlowers.size());
+        System.out.println(String.format("  samples: %d (%d x %d), %s%%", trainingFlowers.size(),
+                trainingFlowers.batchCount(), trainingFlowers.batchSize(),
+                trainingFlowers.size() / (double) allFlowers.size() * 100.0));
         executor.submit(this::trainingLoop);
     }
 
-    private void createFlowersBatch(BatchSource<B> batchSource) {
+    private void createFlowersBatch(SamplesSource samplesSource) {
         double[][] inputs = new double[FLOWERS][2];
         int flowerIndex = 0;
         for (int y = 0; y < HEIGHT; y++) {
@@ -96,24 +97,68 @@ public class FlowersDemo<B extends Batch> extends AbstractGLDemo {
                 flowerIndex++;
             }
         }
-        allFlowersBatch = batchSource.createBatch(inputs, flowers, true);
+        allFlowers = samplesSource.createTraining(this, EVAL_BATCH_SIZE);
     }
 
-    private void createTrainingBatches(BatchSource<B> batchSource) {
+    @Override
+    public int samples() {
+        return FLOWERS;
+    }
+
+    @Override
+    public int features() {
+        return 2;
+    }
+
+    @Override
+    public double input(int sample, int feature) {
+        return feature == 0 ? (sample % WIDTH) / (double) WIDTH
+                : (sample / WIDTH) / (double) HEIGHT;
+    }
+
+    @Override
+    public int outputIndex(int sample) {
+        return flowers[sample];
+    }
+
+    private void createTrainingBatches(SamplesSource samplesSource) {
         int flowerIndex;
         int samples = Math.min(FLOWERS, SAMPLES);
-        double[][] inputs = new double[2][samples];
+        double[][] inputs = new double[samples][2];
         int[] expecteds = new int[samples];
         randomizeFlowers();
         for (int sample = 0; sample < samples; sample++) {
             flowerIndex = randomFlowers[sample];
             int x = flowerIndex % WIDTH;
             int y = flowerIndex / WIDTH;
-            inputs[0][sample] = x / (double) WIDTH;
-            inputs[1][sample] = y / (double) HEIGHT;
+            inputs[sample][0] = x / (double) WIDTH;
+            inputs[sample][1] = y / (double) HEIGHT;
             expecteds[sample] = flowers[flowerIndex];
         }
-        trainingSet = batchSource.createBatches(inputs, expecteds, BATCH_SIZE);
+        TrainingSamplesProvider provider = new TrainingSamplesProvider() {
+            @Override
+            public int samples() {
+                return samples;
+            }
+
+            @Override
+            public double input(int sample, int feature) {
+                int flowerIndex = randomFlowers[sample];
+                return FlowersDemo.this.input(flowerIndex, feature);
+            }
+
+            @Override
+            public int features() {
+                return 2;
+            }
+
+            @Override
+            public int outputIndex(int sample) {
+                int flowerIndex = randomFlowers[sample];
+                return flowers[flowerIndex];
+            }
+        };
+        trainingFlowers = samplesSource.createTraining(provider, BATCH_SIZE);
     }
 
     private void randomizeFlowers() {
@@ -169,7 +214,7 @@ public class FlowersDemo<B extends Batch> extends AbstractGLDemo {
 
     private void trainingLoop() {
         try {
-            double overallAccuracy = network.evaluate(allFlowersBatch, outputs);
+            double overallAccuracy = network.evaluate(allFlowers, outputs);
             schedule(this::renderFlowers);
             System.out.println(String.format("%f%%", overallAccuracy * 100));
 
@@ -183,20 +228,20 @@ public class FlowersDemo<B extends Batch> extends AbstractGLDemo {
                 if (destroyed)
                     return;
 
-                network.train(trainingSet.iterator(), LEARNING_RATE);
+                network.train(trainingFlowers, LEARNING_RATE);
                 epoch++;
 
                 long elapsed = System.currentTimeMillis() - lastLog;
                 if (elapsed > 1000) {
                     synchronized (outputs) {
-                        overallAccuracy = network.evaluate(allFlowersBatch, outputs);
+                        overallAccuracy = network.evaluate(allFlowers, outputs);
                     }
                     schedule(this::renderFlowers);
                     long samples = epoch * SAMPLES;
-                    double accuracy = network.evaluate(trainingSet.iterator());
+                    double trainingAccuracy = network.evaluate(trainingFlowers, null);
                     System.out.println(String.format(
                             "training accuracy: %.2f%%; overall accuracy: %.2f%%; e/s: %.2f; s/ms: %.2f",
-                            accuracy * 100, overallAccuracy * 100,
+                            trainingAccuracy * 100, overallAccuracy * 100,
                             epoch / (elapsed / 1000.0),
                             samples / (double) elapsed));
                     lastLog = System.currentTimeMillis();
@@ -303,6 +348,6 @@ public class FlowersDemo<B extends Batch> extends AbstractGLDemo {
     public static void main(String[] args) {
         MatrixNeuralNetwork<CMArrayMatrix> network = new MatrixNeuralNetwork<>(CMArrayMatrix::new,
                 LAYERS);
-        GLDemoLauncher.launch(new FlowersDemo<>(network));
+        GLDemoLauncher.launch(new FlowersDemo(network));
     }
 }
