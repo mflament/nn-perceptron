@@ -6,7 +6,7 @@ import java.util.Iterator;
 
 import org.junit.Before;
 import org.junit.Test;
-import org.yah.tests.perceptron.array.ArrayMatrix;
+import org.yah.tests.perceptron.array.CMArrayMatrix;
 
 public class MatrixBatchSourceTest {
 
@@ -17,22 +17,22 @@ public class MatrixBatchSourceTest {
     private static final double[][] EXPECTED_OUTPUTS = { { 1, 0, 0 }, { 0, 0, 1 }, { 0, 1, 0 } };
     private static final double[][] EXPECTED_INDICES = { { 0, 2, 1 } };
 
-    private MatrixNeuralNetwork<ArrayMatrix> network;
-    private MatrixBatchSource<ArrayMatrix> source;
+    private MatrixNeuralNetwork<CMArrayMatrix> network;
+    private MatrixBatchSource<CMArrayMatrix> source;
 
     @Before
     public void setup() {
-        network = new MatrixNeuralNetwork<>(ArrayMatrix::new, 2, 4, 3);
+        network = new MatrixNeuralNetwork<>(CMArrayMatrix::new, 2, 4, 3);
         source = new MatrixBatchSource<>(network);
     }
 
     @Test
     public void testCreateBatches() {
-        Iterable<Batch<ArrayMatrix>> batches = source.createBatches(INPUTS, EXPECTEDS, 2);
+        Iterable<Batch<CMArrayMatrix>> batches = source.createBatches(INPUTS, EXPECTEDS, 2);
         for (int i = 0; i < 2; i++) {
-            Iterator<Batch<ArrayMatrix>> iter = batches.iterator();
+            Iterator<Batch<CMArrayMatrix>> iter = batches.iterator();
             assertTrue(iter.hasNext());
-            Batch<ArrayMatrix> batch = iter.next();
+            Batch<CMArrayMatrix> batch = iter.next();
 
             assertEquals(2, batch.size());
             assertMatrix(new double[][] { { 1, 2 }, { 4, 5 } }, batch.inputs());
@@ -53,7 +53,7 @@ public class MatrixBatchSourceTest {
 
     @Test
     public void testCreateBatch() {
-        Batch<ArrayMatrix> batch = source.createBatch(INPUTS, EXPECTEDS);
+        Batch<CMArrayMatrix> batch = source.createBatch(INPUTS, EXPECTEDS);
         assertEquals(3, batch.size());
         assertMatrix(INPUTS, batch.inputs());
         assertMatrix(EXPECTED_OUTPUTS, batch.expectedOutputs());
@@ -62,7 +62,7 @@ public class MatrixBatchSourceTest {
 
     @Test
     public void testCreateTransposedBatch() {
-        Batch<ArrayMatrix> batch = source.createBatch(TINPUTS, EXPECTEDS, true);
+        Batch<CMArrayMatrix> batch = source.createBatch(TINPUTS, EXPECTEDS, true);
         assertEquals(3, batch.size());
         assertMatrix(INPUTS, batch.inputs());
         assertMatrix(EXPECTED_OUTPUTS, batch.expectedOutputs());

@@ -110,6 +110,82 @@ public abstract class AbstractMatrixTest<M extends Matrix<M>> {
         }
     }
 
+    @Test
+    public void testSlide() {
+        assertEquals(1, matrix.slide(0, 1));
+        assertMatrix(new double[][] { { 1, 4 } }, matrix);
+
+        assertEquals(2, matrix.slide(1, 2));
+        assertMatrix(new double[][] { { 2, 5 }, { 3, 6 } }, matrix);
+
+        assertEquals(1, matrix.slide(2, 2));
+        assertMatrix(new double[][] { { 3, 6 } }, matrix);
+
+        assertEquals(0, matrix.slide(3, 1));
+        assertMatrix(new double[][] {}, matrix);
+    }
+
+    @Test
+    public void testSlidingSub() {
+        M m2 = createMatrix(new double[][] { { 1, 3 }, { 2, 5 } });
+        M result = createMatrix(new double[][] { { 10, 11 } });
+
+        matrix.slide(1, 1);
+        m2.slide(0, 1);
+        matrix.sub(m2, result);
+        assertMatrix(new double[][] { { 1, 2 } }, result); // 2 - 1 5 - 3
+
+        m2.slide(1, 1);
+        matrix.sub(m2);
+        assertMatrix(new double[][] { { 0, 0 } }, matrix);
+    }
+
+    @Test
+    public void testSumRows() {
+        M result = createMatrix(matrix.rows(), 1);
+        matrix.sumRows(result);
+        assertMatrix(new double[][] { { 6, 15 } }, result);
+    }
+
+    @Test
+    public void testMaxRowIndex() {
+        matrix = createMatrix(new double[][] { { 4, 3 }, { 2, 7 }, { 1, 1 } });
+        assertEquals(0, matrix.maxRowIndex(0));
+        assertEquals(1, matrix.maxRowIndex(1));
+        assertEquals(0, matrix.maxRowIndex(2));
+        matrix.slide(1, 2);
+        assertEquals(1, matrix.maxRowIndex(0));
+        assertEquals(0, matrix.maxRowIndex(1));
+    }
+
+    @Test
+    public void testSigmoid() {
+        M result = createMatrix(matrix.rows(), matrix.columns());
+        matrix.sigmoid(result);
+        for (int r = 0; r < matrix.rows(); r++) {
+            for (int c = 0; c < matrix.columns(); c++) {
+                assertEquals(Activation.sigmoid(matrix.get(r, c)), result.get(r, c), 0);
+            }
+        }
+    }
+
+    @Test
+    public void testSigmoidPrime() {
+        M result = createMatrix(matrix.rows(), matrix.columns());
+        matrix.sigmoid_prime(result);
+        for (int r = 0; r < matrix.rows(); r++) {
+            for (int c = 0; c < matrix.columns(); c++) {
+                assertEquals(Activation.sigmoid_prime(matrix.get(r, c)), result.get(r, c), 0);
+            }
+        }
+    }
+    @Test
+    public void testAddColumnVector() {
+        M result = createMatrix(matrix.rows(), matrix.columns());
+        matrix.addColumnVector(createMatrix(new double[][] { { 10, 20 } }), result);
+        assertMatrix(new double[][] { { 11, 24 }, { 12, 25 }, { 13, 26 } }, result);
+    }
+
     protected M randomMatrix(M matrix) {
         matrix.apply((r, c, v) -> random.nextGaussian());
         return matrix;

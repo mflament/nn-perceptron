@@ -3,12 +3,12 @@ package org.yah.tests.perceptron;
 public class Activation {
 
     public static double sigmoid(double v) {
-        return 1.0 / (1.0 + exp(-v));
+        return 1.0 / (1.0 + Math.exp(-v));
     }
 
     public static double sigmoid_prime(double v) {
-        double sv = sigmoid(v);
-        return sv * (1.0 - sv);
+        double s = sigmoid(v);
+        return s * (1.0 - s);
     }
 
     public static double exp(double val) {

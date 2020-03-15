@@ -1,7 +1,7 @@
 package org.yah.tests.perceptron;
 
 import org.yah.tests.perceptron.MatrixNeuralNetwork.MatrixFactory;
-import org.yah.tests.perceptron.array.ArrayMatrix;
+import org.yah.tests.perceptron.array.CMArrayMatrix;
 
 public class NeuralNetworkSandbox<M extends Matrix<M>> {
 
@@ -52,7 +52,7 @@ public class NeuralNetworkSandbox<M extends Matrix<M>> {
     }
 
     public static void main(String[] args) throws InterruptedException {
-        NeuralNetworkSandbox<ArrayMatrix> sb = new NeuralNetworkSandbox<>(ArrayMatrix::new, 2, 2,
+        NeuralNetworkSandbox<CMArrayMatrix> sb = new NeuralNetworkSandbox<>(CMArrayMatrix::new, 2, 2,
                 2);
         sb.runNAND();
     }

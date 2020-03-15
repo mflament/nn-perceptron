@@ -4,8 +4,10 @@
 package org.yah.tests.perceptron;
 
 /**
+ * Note: all inputs are expected to be column major. They can be transposed
+ * using the corresponding parameter if necessary.
+ * 
  * @author Yah
- *
  */
 public interface BatchSource<M extends Matrix<M>> {
 

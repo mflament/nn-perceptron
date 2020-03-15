@@ -15,7 +15,8 @@ import org.yah.tests.perceptron.Matrix;
 import org.yah.tests.perceptron.MatrixNeuralNetwork;
 import org.yah.tests.perceptron.MatrixNeuralNetwork.MatrixFactory;
 import org.yah.tests.perceptron.NeuralNetwork;
-import org.yah.tests.perceptron.array.ArrayMatrix;
+import org.yah.tests.perceptron.array.RMArrayMatrix;
+import org.yah.tests.perceptron.flat.CMFlatMatrix;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
@@ -308,6 +309,6 @@ public class FlowersDemo<M extends Matrix<M>> extends AbstractGLDemo {
     }
 
     public static void main(String[] args) {
-        GLDemoLauncher.launch(new FlowersDemo<>(ArrayMatrix::new));
+        GLDemoLauncher.launch(new FlowersDemo<>(CMFlatMatrix::new));
     }
 }

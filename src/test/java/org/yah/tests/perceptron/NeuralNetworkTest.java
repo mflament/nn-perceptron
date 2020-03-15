@@ -3,12 +3,12 @@ package org.yah.tests.perceptron;
 import static org.junit.Assert.assertEquals;
 
 import org.junit.Test;
-import org.yah.tests.perceptron.array.ArrayMatrix;
+import org.yah.tests.perceptron.array.CMArrayMatrix;
 
 public class NeuralNetworkTest {
 
-    protected NeuralNetwork<ArrayMatrix> newNetwork(int... layerSizes) {
-        return new MatrixNeuralNetwork<>(ArrayMatrix::new, layerSizes);
+    protected NeuralNetwork<CMArrayMatrix> newNetwork(int... layerSizes) {
+        return new MatrixNeuralNetwork<>(CMArrayMatrix::new, layerSizes);
     }
 
     @Test

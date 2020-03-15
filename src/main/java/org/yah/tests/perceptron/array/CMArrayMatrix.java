@@ -12,35 +12,34 @@ import org.yah.tests.perceptron.Matrix;
  * @author Yah
  *
  */
-public class ArrayMatrix implements Matrix<ArrayMatrix> {
+public class CMArrayMatrix implements Matrix<CMArrayMatrix> {
 
     private double[][] data; // [col][rows]
 
     private int colOffset;
     private int columns;
 
-    public ArrayMatrix(int rows, int columns) {
+    public CMArrayMatrix(int rows, int columns) {
         this.data = new double[columns][rows];
         this.columns = columns;
     }
 
-    public ArrayMatrix(double[][] data) {
-        set(data);
+    /**
+     * @param data column major data (needs a standard ...)
+     */
+    public CMArrayMatrix(double[][] _data) {
+        colOffset = 0;
+        columns = _data.length;
+        int rows = _data[0].length;
+        data = new double[columns][rows];
+        for (int col = 0; col < columns; col++) {
+            System.arraycopy(_data[col], 0, data[col], 0, rows);
+        }
     }
 
-    public ArrayMatrix(ArrayMatrix from) {
+    public CMArrayMatrix(CMArrayMatrix from) {
         this.data = from.data;
         this.columns = this.data.length;
-    }
-
-    public void set(double[][] data) {
-        colOffset = 0;
-        columns = data.length;
-        int rows = data[0].length;
-        this.data = new double[columns][rows];
-        for (int col = 0; col < columns; col++) {
-            System.arraycopy(data[col], 0, this.data[col], 0, rows);
-        }
     }
 
     @Override
@@ -51,12 +50,12 @@ public class ArrayMatrix implements Matrix<ArrayMatrix> {
     }
 
     @Override
-    public ArrayMatrix createView() {
-        return new ArrayMatrix(this);
+    public CMArrayMatrix createView() {
+        return new CMArrayMatrix(this);
     }
 
     @Override
-    public ArrayMatrix self() {
+    public CMArrayMatrix self() {
         return this;
     }
 
@@ -90,7 +89,7 @@ public class ArrayMatrix implements Matrix<ArrayMatrix> {
     }
 
     @Override
-    public ArrayMatrix sub(ArrayMatrix b, ArrayMatrix target) {
+    public CMArrayMatrix sub(CMArrayMatrix b, CMArrayMatrix target) {
         int rows = rows();
         for (int col = 0; col < columns; col++) {
             double[] acols = data[col + colOffset];
@@ -104,7 +103,7 @@ public class ArrayMatrix implements Matrix<ArrayMatrix> {
     }
 
     @Override
-    public ArrayMatrix mul(ArrayMatrix b, ArrayMatrix target) {
+    public CMArrayMatrix mul(CMArrayMatrix b, CMArrayMatrix target) {
         int rows = rows();
         for (int col = 0; col < columns; col++) {
             double[] acols = data[col + colOffset];
@@ -118,7 +117,7 @@ public class ArrayMatrix implements Matrix<ArrayMatrix> {
     }
 
     @Override
-    public ArrayMatrix mul(double s, ArrayMatrix target) {
+    public CMArrayMatrix mul(double s, CMArrayMatrix target) {
         int rows = rows();
         for (int col = 0; col < columns; col++) {
             double[] acols = data[col + colOffset];
@@ -131,27 +130,27 @@ public class ArrayMatrix implements Matrix<ArrayMatrix> {
     }
 
     @Override
-    public ArrayMatrix dot(ArrayMatrix b, ArrayMatrix target) {
+    public CMArrayMatrix dot(CMArrayMatrix b, CMArrayMatrix target) {
         assert columns == b.rows();
         assert target.rows() == rows() && target.columns == b.columns;
 
         int trows = target.rows();
-        int pc = columns();
         for (int tc = 0; tc < target.columns; tc++) {
             double[] tcol = target.data[tc + target.colOffset];
             double[] bcol = b.data[tc + b.colOffset];
             for (int tr = 0; tr < trows; tr++) {
-                tcol[tr] = 0;
-                for (int i = 0; i < pc; i++) {
-                    tcol[tr] += data[i + colOffset][tr] * bcol[i];
+                double v = 0;
+                for (int i = 0; i < columns; i++) {
+                    v += data[i + colOffset][tr] * bcol[i];
                 }
+                tcol[tr] = v;
             }
         }
         return target;
     }
 
     @Override
-    public ArrayMatrix transpose_dot(ArrayMatrix b, ArrayMatrix target) {
+    public CMArrayMatrix transpose_dot(CMArrayMatrix b, CMArrayMatrix target) {
         assert rows() == b.rows();
         assert target.rows() == columns && target.columns == b.columns;
 
@@ -162,17 +161,18 @@ public class ArrayMatrix implements Matrix<ArrayMatrix> {
             double[] tcol = target.data[tc + target.colOffset];
             for (int tr = 0; tr < trows; tr++) {
                 double[] col = data[tr + colOffset];
-                tcol[tr] = 0;
+                double v = 0;
                 for (int i = 0; i < pc; i++) {
-                    tcol[tr] += col[i] * bcol[i];
+                    v += col[i] * bcol[i];
                 }
+                tcol[tr] = v;
             }
         }
         return target;
     }
 
     @Override
-    public ArrayMatrix dot_transpose(ArrayMatrix b, ArrayMatrix target) {
+    public CMArrayMatrix dot_transpose(CMArrayMatrix b, CMArrayMatrix target) {
         assert columns == b.columns;
         assert target.rows() == rows() && target.columns == b.rows();
 
@@ -181,28 +181,29 @@ public class ArrayMatrix implements Matrix<ArrayMatrix> {
         for (int tc = 0; tc < target.columns; tc++) {
             double[] tcol = target.data[tc + target.colOffset];
             for (int tr = 0; tr < trows; tr++) {
-                tcol[tr] = 0;
+                double v = 0;
                 for (int i = 0; i < pc; i++) {
-                    tcol[tr] += data[i + colOffset][tr] * b.data[i + b.colOffset][tc];
+                    v += data[i + colOffset][tr] * b.data[i + b.colOffset][tc];
                 }
+                tcol[tr] = v;
             }
         }
         return target;
     }
 
     @Override
-    public ArrayMatrix dot(ArrayMatrix b) {
-        return dot(b, new ArrayMatrix(rows(), b.columns()));
+    public CMArrayMatrix dot(CMArrayMatrix b) {
+        return dot(b, new CMArrayMatrix(rows(), b.columns()));
     }
 
     @Override
-    public ArrayMatrix transpose_dot(ArrayMatrix b) {
-        return transpose_dot(b, new ArrayMatrix(columns(), b.columns()));
+    public CMArrayMatrix transpose_dot(CMArrayMatrix b) {
+        return transpose_dot(b, new CMArrayMatrix(columns(), b.columns()));
     }
 
     @Override
-    public ArrayMatrix dot_transpose(ArrayMatrix b) {
-        return dot_transpose(b, new ArrayMatrix(rows(), b.rows()));
+    public CMArrayMatrix dot_transpose(CMArrayMatrix b) {
+        return dot_transpose(b, new CMArrayMatrix(rows(), b.rows()));
     }
 
     @Override
@@ -211,7 +212,7 @@ public class ArrayMatrix implements Matrix<ArrayMatrix> {
     }
 
     @Override
-    public ArrayMatrix addColumnVector(ArrayMatrix vector, ArrayMatrix target) {
+    public CMArrayMatrix addColumnVector(CMArrayMatrix vector, CMArrayMatrix target) {
         int rows = rows();
         assert vector.columns == 1;
         assert vector.rows() == rows;
@@ -228,11 +229,10 @@ public class ArrayMatrix implements Matrix<ArrayMatrix> {
     }
 
     @Override
-    public ArrayMatrix sigmoid(ArrayMatrix target) {
+    public CMArrayMatrix sigmoid(CMArrayMatrix target) {
         int rows = rows();
         assert target.columns == columns;
         assert target.rows() == rows;
-
         for (int c = 0; c < columns; c++) {
             double[] col = data[c + colOffset];
             double[] tcol = target.data[c + target.colOffset];
@@ -244,7 +244,7 @@ public class ArrayMatrix implements Matrix<ArrayMatrix> {
     }
 
     @Override
-    public ArrayMatrix sigmoid_prime(ArrayMatrix target) {
+    public CMArrayMatrix sigmoid_prime(CMArrayMatrix target) {
         int rows = rows();
         assert target.columns == columns;
         assert target.rows() == rows;
@@ -259,7 +259,7 @@ public class ArrayMatrix implements Matrix<ArrayMatrix> {
     }
 
     @Override
-    public ArrayMatrix sumRows(ArrayMatrix target) {
+    public CMArrayMatrix sumRows(CMArrayMatrix target) {
         int rows = rows();
         assert target.rows() == rows;
         assert target.columns == 1;
@@ -276,13 +276,14 @@ public class ArrayMatrix implements Matrix<ArrayMatrix> {
 
     @Override
     public int maxRowIndex(int column) {
-        double[] col = data[column + colOffset];
         int res = -1;
         double max = Double.MIN_VALUE;
+        double[] col = data[column + colOffset];
         for (int i = 0; i < col.length; i++) {
-            if (col[i] > max) {
+            double v = col[i];
+            if (v > max) {
                 res = i;
-                max = col[i];
+                max = v;
             }
         }
         return res;
