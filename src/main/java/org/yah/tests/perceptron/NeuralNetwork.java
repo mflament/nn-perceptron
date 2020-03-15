@@ -2,7 +2,7 @@ package org.yah.tests.perceptron;
 
 import java.util.Iterator;
 
-public interface NeuralNetwork<M extends Matrix<M>> {
+public interface NeuralNetwork<B extends Batch> {
 
     int layers();
 
@@ -13,19 +13,21 @@ public interface NeuralNetwork<M extends Matrix<M>> {
     int features(int layer);
 
     int neurons(int layer);
+    
+    BatchSource<B> createBatchSource();
 
-    void propagate(M inputs, int[] outputs);
+    void propagate(B batch, int[] outputs);
 
-    double evaluate(Batch<M> batch, int[] outputs);
+    double evaluate(B batch, int[] outputs);
 
-    default double evaluate(Batch<M> batch) {
+    default double evaluate(B batch) {
         return evaluate(batch, null);
     }
 
-    double evaluate(Iterator<Batch<M>> batches);
+    double evaluate(Iterator<B> batches);
 
-    void train(Batch<M> batch, double learningRate);
+    void train(B batch, double learningRate);
 
-    void train(Iterator<Batch<M>> batches, double learningRate);
+    void train(Iterator<B> batches, double learningRate);
 
 }

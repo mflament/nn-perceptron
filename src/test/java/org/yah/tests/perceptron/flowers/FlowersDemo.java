@@ -11,12 +11,9 @@ import org.yah.tests.perceptron.Batch;
 import org.yah.tests.perceptron.BatchSource;
 import org.yah.tests.perceptron.BatchSource.TrainingSet;
 import org.yah.tests.perceptron.GLDemoLauncher;
-import org.yah.tests.perceptron.Matrix;
-import org.yah.tests.perceptron.MatrixNeuralNetwork;
-import org.yah.tests.perceptron.MatrixNeuralNetwork.MatrixFactory;
 import org.yah.tests.perceptron.NeuralNetwork;
-import org.yah.tests.perceptron.array.RMArrayMatrix;
-import org.yah.tests.perceptron.flat.CMFlatMatrix;
+import org.yah.tests.perceptron.matrix.MatrixNeuralNetwork;
+import org.yah.tests.perceptron.matrix.array.CMArrayMatrix;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
@@ -27,7 +24,7 @@ import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.TextureData;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 
-public class FlowersDemo<M extends Matrix<M>> extends AbstractGLDemo {
+public class FlowersDemo<B extends Batch> extends AbstractGLDemo {
 
     private static final int WIDTH = 800;
     private static final int HEIGHT = 600;
@@ -50,22 +47,20 @@ public class FlowersDemo<M extends Matrix<M>> extends AbstractGLDemo {
     private int[] randomFlowers = new int[FLOWERS];
     private int[] outputs = new int[FLOWERS];
 
-    private NeuralNetwork<M> network;
+    private final NeuralNetwork<B> network;
     private boolean paused = true;
     private boolean destroyed;
     private long lastLog;
     private long epoch;
 
-    private Batch<M> allFlowersBatch;
-    private TrainingSet<M> trainingSet;
+    private B allFlowersBatch;
+    private TrainingSet<B> trainingSet;
 
     private Texture texture;
     private FlowersTextureData textureData;
 
-    private final MatrixFactory<M> matrixFactory;
-
-    public FlowersDemo(MatrixFactory<M> matrixFactory) {
-        this.matrixFactory = matrixFactory;
+    public FlowersDemo(NeuralNetwork<B> network) {
+        this.network = network;
     }
 
     @Override
@@ -75,10 +70,7 @@ public class FlowersDemo<M extends Matrix<M>> extends AbstractGLDemo {
         textureData = new FlowersTextureData();
         texture = new Texture(textureData);
 
-        MatrixNeuralNetwork<M> network = new MatrixNeuralNetwork<>(matrixFactory, LAYERS);
-        this.network = network;
-
-        BatchSource<M> batchSource = network.createBatchSource();
+        BatchSource<B> batchSource = network.createBatchSource();
         createFlowers();
         createFlowersBatch(batchSource);
         createTrainingBatches(batchSource);
@@ -92,7 +84,7 @@ public class FlowersDemo<M extends Matrix<M>> extends AbstractGLDemo {
         executor.submit(this::trainingLoop);
     }
 
-    private void createFlowersBatch(BatchSource<M> batchSource) {
+    private void createFlowersBatch(BatchSource<B> batchSource) {
         double[][] inputs = new double[FLOWERS][2];
         int flowerIndex = 0;
         for (int y = 0; y < HEIGHT; y++) {
@@ -107,7 +99,7 @@ public class FlowersDemo<M extends Matrix<M>> extends AbstractGLDemo {
         allFlowersBatch = batchSource.createBatch(inputs, flowers, true);
     }
 
-    private void createTrainingBatches(BatchSource<M> batchSource) {
+    private void createTrainingBatches(BatchSource<B> batchSource) {
         int flowerIndex;
         int samples = Math.min(FLOWERS, SAMPLES);
         double[][] inputs = new double[2][samples];
@@ -309,6 +301,8 @@ public class FlowersDemo<M extends Matrix<M>> extends AbstractGLDemo {
     }
 
     public static void main(String[] args) {
-        GLDemoLauncher.launch(new FlowersDemo<>(CMFlatMatrix::new));
+        MatrixNeuralNetwork<CMArrayMatrix> network = new MatrixNeuralNetwork<>(CMArrayMatrix::new,
+                LAYERS);
+        GLDemoLauncher.launch(new FlowersDemo<>(network));
     }
 }

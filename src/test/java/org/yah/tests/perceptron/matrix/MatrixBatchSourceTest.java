@@ -1,12 +1,14 @@
-package org.yah.tests.perceptron;
+package org.yah.tests.perceptron.matrix;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 import java.util.Iterator;
 
 import org.junit.Before;
 import org.junit.Test;
-import org.yah.tests.perceptron.array.CMArrayMatrix;
+import org.yah.tests.perceptron.matrix.array.CMArrayMatrix;
 
 public class MatrixBatchSourceTest {
 
@@ -28,11 +30,11 @@ public class MatrixBatchSourceTest {
 
     @Test
     public void testCreateBatches() {
-        Iterable<Batch<CMArrayMatrix>> batches = source.createBatches(INPUTS, EXPECTEDS, 2);
+        Iterable<MatrixBatch<CMArrayMatrix>> batches = source.createBatches(INPUTS, EXPECTEDS, 2);
         for (int i = 0; i < 2; i++) {
-            Iterator<Batch<CMArrayMatrix>> iter = batches.iterator();
+            Iterator<MatrixBatch<CMArrayMatrix>> iter = batches.iterator();
             assertTrue(iter.hasNext());
-            Batch<CMArrayMatrix> batch = iter.next();
+            MatrixBatch<CMArrayMatrix> batch = iter.next();
 
             assertEquals(2, batch.size());
             assertMatrix(new double[][] { { 1, 2 }, { 4, 5 } }, batch.inputs());
@@ -53,7 +55,7 @@ public class MatrixBatchSourceTest {
 
     @Test
     public void testCreateBatch() {
-        Batch<CMArrayMatrix> batch = source.createBatch(INPUTS, EXPECTEDS);
+        MatrixBatch<CMArrayMatrix> batch = source.createBatch(INPUTS, EXPECTEDS);
         assertEquals(3, batch.size());
         assertMatrix(INPUTS, batch.inputs());
         assertMatrix(EXPECTED_OUTPUTS, batch.expectedOutputs());
@@ -62,7 +64,7 @@ public class MatrixBatchSourceTest {
 
     @Test
     public void testCreateTransposedBatch() {
-        Batch<CMArrayMatrix> batch = source.createBatch(TINPUTS, EXPECTEDS, true);
+        MatrixBatch<CMArrayMatrix> batch = source.createBatch(TINPUTS, EXPECTEDS, true);
         assertEquals(3, batch.size());
         assertMatrix(INPUTS, batch.inputs());
         assertMatrix(EXPECTED_OUTPUTS, batch.expectedOutputs());

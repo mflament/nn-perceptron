@@ -1,4 +1,4 @@
-package org.yah.tests.perceptron;
+package org.yah.tests.perceptron.matrix;
 
 public interface Matrix<M extends Matrix<M>> {
 

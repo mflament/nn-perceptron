@@ -6,6 +6,7 @@ import java.util.Random;
 
 import org.junit.Before;
 import org.junit.Test;
+import org.yah.tests.perceptron.matrix.Matrix;
 
 public abstract class AbstractMatrixTest<M extends Matrix<M>> {
 

@@ -3,7 +3,7 @@
  */
 package perceptronorg.yah.tests.perceptron;
 
-import static org.yah.tests.perceptron.array.CMArrayMatrix.transpose;
+import static org.yah.tests.perceptron.matrix.array.CMArrayMatrix.transpose;
 
 import java.util.concurrent.TimeUnit;
 
@@ -15,8 +15,8 @@ import org.openjdk.jmh.annotations.OutputTimeUnit;
 import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.Setup;
 import org.yah.tests.perceptron.NeuralNetwork;
-import org.yah.tests.perceptron.array.ArrayBatch;
-import org.yah.tests.perceptron.array.CMArrayMatrix;
+import org.yah.tests.perceptron.matrix.array.ArrayBatch;
+import org.yah.tests.perceptron.matrix.array.CMArrayMatrix;
 
 /**
  * @author Yah

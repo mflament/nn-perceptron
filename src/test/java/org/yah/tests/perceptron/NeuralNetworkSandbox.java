@@ -1,7 +1,10 @@
 package org.yah.tests.perceptron;
 
-import org.yah.tests.perceptron.MatrixNeuralNetwork.MatrixFactory;
-import org.yah.tests.perceptron.array.CMArrayMatrix;
+import org.yah.tests.perceptron.matrix.Matrix;
+import org.yah.tests.perceptron.matrix.MatrixBatch;
+import org.yah.tests.perceptron.matrix.MatrixNeuralNetwork;
+import org.yah.tests.perceptron.matrix.MatrixNeuralNetwork.MatrixFactory;
+import org.yah.tests.perceptron.matrix.array.CMArrayMatrix;
 
 public class NeuralNetworkSandbox<M extends Matrix<M>> {
 
@@ -9,7 +12,7 @@ public class NeuralNetworkSandbox<M extends Matrix<M>> {
     private static final double NS_MS = 1E-6;
 
     private MatrixNeuralNetwork<M> network;
-    private BatchSource<M> batchSource;
+    private BatchSource<MatrixBatch<M>> batchSource;
 
     private NeuralNetworkSandbox(MatrixFactory<M> matrixFactory, int... layerSizes) {
         network = new MatrixNeuralNetwork<>(matrixFactory, layerSizes);
@@ -33,7 +36,7 @@ public class NeuralNetworkSandbox<M extends Matrix<M>> {
     }
 
     public void run(double[][] inputs, int[] outputIndices) throws InterruptedException {
-        Batch<M> batch = batchSource.createBatch(inputs, outputIndices, true);
+        MatrixBatch<M> batch = batchSource.createBatch(inputs, outputIndices, true);
         long start = System.nanoTime();
         System.out.println(network.evaluate(batch));
         int count = 0;

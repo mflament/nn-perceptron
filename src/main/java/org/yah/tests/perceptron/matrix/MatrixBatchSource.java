@@ -1,16 +1,21 @@
 /**
  * 
  */
-package org.yah.tests.perceptron;
+package org.yah.tests.perceptron.matrix;
 
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 
+import org.yah.tests.perceptron.BatchSource;
+
 /**
+ * Note: all inputs are expected to be column major. They can be transposed
+ * using the corresponding parameter if necessary.
+ * 
  * @author Yah
  *
  */
-public class MatrixBatchSource<M extends Matrix<M>> implements BatchSource<M> {
+public class MatrixBatchSource<M extends Matrix<M>> implements BatchSource<MatrixBatch<M>> {
 
     private final MatrixNeuralNetwork<M> network;
 
@@ -19,7 +24,8 @@ public class MatrixBatchSource<M extends Matrix<M>> implements BatchSource<M> {
     }
 
     @Override
-    public TrainingSet<M> createBatches(double[][] inputs, int[] expecteds, int batchSize,
+    public TrainingSet<MatrixBatch<M>> createBatches(double[][] inputs, int[] expecteds,
+            int batchSize,
             boolean transposeInputs) {
         M inputsMatrix = createInputs(inputs, transposeInputs);
         checkExpecteds(expecteds, inputsMatrix.columns());
@@ -29,7 +35,13 @@ public class MatrixBatchSource<M extends Matrix<M>> implements BatchSource<M> {
     }
 
     @Override
-    public Batch<M> createBatch(double[][] inputs, int[] expecteds, boolean transposeInputs) {
+    public MatrixBatch<M> createBatch(double[][] inputs, boolean transposeInputs) {
+        M inputsMatrix = createInputs(inputs, transposeInputs);
+        return new MatrixBatch<>(inputsMatrix);
+    }
+
+    @Override
+    public MatrixBatch<M> createBatch(double[][] inputs, int[] expecteds, boolean transposeInputs) {
         M inputsMatrix = createInputs(inputs, transposeInputs);
         checkExpecteds(expecteds, inputsMatrix.columns());
         M expectedOutputs = createOutputs(expecteds);
@@ -73,7 +85,8 @@ public class MatrixBatchSource<M extends Matrix<M>> implements BatchSource<M> {
         return res;
     }
 
-    private static final class MatrixTrainingSet<M extends Matrix<M>> implements TrainingSet<M> {
+    private static final class MatrixTrainingSet<M extends Matrix<M>>
+            implements TrainingSet<MatrixBatch<M>> {
         private final M inputs;
         private final M expectedOutputs;
         private final M expectedIndices;
@@ -87,7 +100,7 @@ public class MatrixBatchSource<M extends Matrix<M>> implements BatchSource<M> {
         }
 
         @Override
-        public Iterator<Batch<M>> iterator() {
+        public Iterator<MatrixBatch<M>> iterator() {
             return new MatrixBatchIterator<>(inputs, expectedOutputs, expectedIndices, batchSize);
         }
 
@@ -104,7 +117,7 @@ public class MatrixBatchSource<M extends Matrix<M>> implements BatchSource<M> {
     }
 
     private static final class MatrixBatchIterator<M extends Matrix<M>>
-            implements Iterator<Batch<M>> {
+            implements Iterator<MatrixBatch<M>> {
 
         private final M inputs;
         private final M expectedOutputs;
@@ -140,7 +153,7 @@ public class MatrixBatchSource<M extends Matrix<M>> implements BatchSource<M> {
         }
 
         @Override
-        public synchronized Batch<M> next() {
+        public synchronized MatrixBatch<M> next() {
             if (!hasNext())
                 throw new NoSuchElementException();
             MatrixBatch<M> batch = batches.get();
@@ -148,48 +161,5 @@ public class MatrixBatchSource<M extends Matrix<M>> implements BatchSource<M> {
             return batch;
         }
 
-    }
-
-    private static final class MatrixBatch<M extends Matrix<M>> implements Batch<M> {
-        private final M inputs;
-        private final M expectedOutputs;
-        private final M expectedIndices;
-        private int index;
-
-        public MatrixBatch(M inputs, M expectedOutputs, M expectedIndices) {
-            this.inputs = inputs;
-            this.expectedOutputs = expectedOutputs;
-            this.expectedIndices = expectedIndices;
-        }
-
-        public int slide(int offset, int columns, int index) {
-            int newSize = inputs.slide(offset, columns);
-            int s = expectedOutputs.slide(offset, columns);
-            assert s == newSize;
-            s = expectedIndices.slide(offset, columns);
-            assert s == newSize;
-            this.index = index;
-            return newSize;
-        }
-
-        @Override
-        public int index() {
-            return index;
-        }
-
-        @Override
-        public M inputs() {
-            return inputs;
-        }
-
-        @Override
-        public M expectedOutputs() {
-            return expectedOutputs;
-        }
-
-        @Override
-        public M expectedIndices() {
-            return expectedIndices;
-        }
     }
 }

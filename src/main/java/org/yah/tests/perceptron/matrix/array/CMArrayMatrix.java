@@ -1,12 +1,12 @@
 /**
  * 
  */
-package org.yah.tests.perceptron.array;
+package org.yah.tests.perceptron.matrix.array;
 
 import java.util.Arrays;
 
 import org.yah.tests.perceptron.Activation;
-import org.yah.tests.perceptron.Matrix;
+import org.yah.tests.perceptron.matrix.Matrix;
 
 /**
  * @author Yah

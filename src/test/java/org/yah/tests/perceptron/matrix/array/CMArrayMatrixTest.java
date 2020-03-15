@@ -1,6 +1,7 @@
-package org.yah.tests.perceptron.array;
+package org.yah.tests.perceptron.matrix.array;
 
 import org.yah.tests.perceptron.AbstractMatrixTest;
+import org.yah.tests.perceptron.matrix.array.CMArrayMatrix;
 
 public class CMArrayMatrixTest extends AbstractMatrixTest<CMArrayMatrix> {
 

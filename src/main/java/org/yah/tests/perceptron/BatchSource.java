@@ -4,14 +4,11 @@
 package org.yah.tests.perceptron;
 
 /**
- * Note: all inputs are expected to be column major. They can be transposed
- * using the corresponding parameter if necessary.
- * 
  * @author Yah
  */
-public interface BatchSource<M extends Matrix<M>> {
+public interface BatchSource<B extends Batch> {
 
-    public interface TrainingSet<M extends Matrix<M>> extends Iterable<Batch<M>> {
+    public interface TrainingSet<B extends Batch> extends Iterable<B> {
         int samples();
 
         int batchSize();
@@ -21,16 +18,18 @@ public interface BatchSource<M extends Matrix<M>> {
         }
     }
 
-    TrainingSet<M> createBatches(double[][] inputs, int[] expecteds, int batchSize,
+    TrainingSet<B> createBatches(double[][] inputs, int[] expecteds, int batchSize,
             boolean transposeInputs);
 
-    default TrainingSet<M> createBatches(double[][] inputs, int[] expecteds, int batchSize) {
+    default TrainingSet<B> createBatches(double[][] inputs, int[] expecteds, int batchSize) {
         return createBatches(inputs, expecteds, batchSize, false);
     }
 
-    Batch<M> createBatch(double[][] inputs, int[] expecteds, boolean transposeInputs);
+    B createBatch(double[][] inputs, boolean transposeInputs);
 
-    default Batch<M> createBatch(double[][] inputs, int[] expecteds) {
+    B createBatch(double[][] inputs, int[] expecteds, boolean transposeInputs);
+
+    default B createBatch(double[][] inputs, int[] expecteds) {
         return createBatch(inputs, expecteds, false);
     }
 }

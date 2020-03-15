@@ -1,18 +1,21 @@
 /**
  * 
  */
-package org.yah.tests.perceptron;
+package org.yah.tests.perceptron.matrix;
 
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.Objects;
 import java.util.Random;
 
+import org.yah.tests.perceptron.BatchSource;
+import org.yah.tests.perceptron.NeuralNetwork;
+
 /**
  * @author Yah
  *
  */
-public class MatrixNeuralNetwork<M extends Matrix<M>> implements NeuralNetwork<M> {
+public class MatrixNeuralNetwork<M extends Matrix<M>> implements NeuralNetwork<MatrixBatch<M>> {
 
     public static final Random RANDOM = createRandom();
 
@@ -71,7 +74,8 @@ public class MatrixNeuralNetwork<M extends Matrix<M>> implements NeuralNetwork<M
         }
     }
 
-    public BatchSource<M> createBatchSource() {
+    @Override
+    public BatchSource<MatrixBatch<M>> createBatchSource() {
         return new MatrixBatchSource<>(this);
     }
 
@@ -110,12 +114,12 @@ public class MatrixNeuralNetwork<M extends Matrix<M>> implements NeuralNetwork<M
     }
 
     @Override
-    public void propagate(M inputs, int[] outputs) {
+    public void propagate(MatrixBatch<M> inputs, int[] outputs) {
         contexts.get().propagate(inputs, outputs);
     }
 
     @Override
-    public double evaluate(Batch<M> batch, int[] outputs) {
+    public double evaluate(MatrixBatch<M> batch, int[] outputs) {
         return contexts.get().evaluate(batch, outputs);
     }
 
@@ -125,12 +129,12 @@ public class MatrixNeuralNetwork<M extends Matrix<M>> implements NeuralNetwork<M
     }
 
     @Override
-    public double evaluate(Iterator<Batch<M>> batches) {
+    public double evaluate(Iterator<MatrixBatch<M>> batches) {
         BatchContext context = contexts.get();
         double total = 0;
         int count = 0;
         while (batches.hasNext()) {
-            Batch<M> batch = batches.next();
+            MatrixBatch<M> batch = batches.next();
             total += context.evaluate(batch, null);
             count++;
         }
@@ -138,15 +142,15 @@ public class MatrixNeuralNetwork<M extends Matrix<M>> implements NeuralNetwork<M
     }
 
     @Override
-    public void train(Batch<M> batch, double learningRate) {
+    public void train(MatrixBatch<M> batch, double learningRate) {
         contexts.get().train(batch, learningRate);
     }
 
     @Override
-    public void train(Iterator<Batch<M>> batches, double learningRate) {
+    public void train(Iterator<MatrixBatch<M>> batches, double learningRate) {
         BatchContext context = contexts.get();
         while (batches.hasNext()) {
-            Batch<M> batch = batches.next();
+            MatrixBatch<M> batch = batches.next();
             context.train(batch, learningRate);
         }
     }
@@ -190,9 +194,10 @@ public class MatrixNeuralNetwork<M extends Matrix<M>> implements NeuralNetwork<M
             this.batchSize = batchSize;
         }
 
-        public void propagate(M inputs, int[] outputs) {
-            int size = inputs.columns();
-            setBatchSize(size);
+        public void propagate(MatrixBatch<M> batch, int[] outputs) {
+            int size = batch.size();
+            setBatchSize(batch.size());
+            M inputs = batch.inputs();
             for (int layer = 0; layer < layers; layer++) {
                 inputs = forward(layer, inputs);
             }
@@ -202,12 +207,12 @@ public class MatrixNeuralNetwork<M extends Matrix<M>> implements NeuralNetwork<M
             }
         }
 
-        public double evaluate(Batch<M> batch, int[] outputIndices) {
+        public double evaluate(MatrixBatch<M> batch, int[] outputIndices) {
             M outputs = forward(batch);
             return batch.accuracy(outputs, outputIndices);
         }
 
-        public void train(Batch<M> batch, double learningRate) {
+        public void train(MatrixBatch<M> batch, double learningRate) {
             // forward propagation
             forward(batch);
 
@@ -228,7 +233,7 @@ public class MatrixNeuralNetwork<M extends Matrix<M>> implements NeuralNetwork<M
             }
         }
 
-        private M forward(Batch<M> batch) {
+        private M forward(MatrixBatch<M> batch) {
             setBatchSize(batch.size());
             M inputs = batch.inputs();
             for (int layer = 0; layer < layers; layer++) {
