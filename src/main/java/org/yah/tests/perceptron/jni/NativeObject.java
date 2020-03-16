@@ -1,13 +1,21 @@
 package org.yah.tests.perceptron.jni;
 
-interface NativeObject {
+abstract class NativeObject implements AutoCloseable {
 
-    long reference();
+    protected long reference;
 
-    void delete();
+    @Override
+    public void close() {
+        if (reference != 0) {
+            delete(reference);
+            reference = 0;
+        }
+    }
 
-    default void checkReference() {
-        if (reference() == 0) 
+    protected abstract void delete(long reference);
+
+    protected void checkReference() {
+        if (reference == 0)
             throw new IllegalStateException("Object " + this + " has been deleted");
     }
 }

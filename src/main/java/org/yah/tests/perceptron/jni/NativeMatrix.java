@@ -19,6 +19,7 @@ class NativeMatrix {
                 buffer.putDouble(function.apply(r, c, 0));
             }
         }
+        buffer.flip();
         return buffer;
     }
 

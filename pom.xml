@@ -67,7 +67,7 @@
 				<configuration>
 					<compilerArgs>
 						<arg>-h</arg>
-						<arg>native/neuralnetwork/jni</arg>
+						<arg>cpp/jni</arg>
 					</compilerArgs>
 					<source>11</source>
 					<target>11</target>
@@ -88,7 +88,7 @@
 							<excludeDefaultDirectories>true</excludeDefaultDirectories>
 							<filesets>
 								<fileset>
-									<directory>native/neuralnetwork/jni</directory>
+									<directory>cpp/jni</directory>
 									<includes>
 										<include>*.h</include>
 									</includes>

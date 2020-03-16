@@ -4,8 +4,7 @@ import java.nio.Buffer;
 
 import org.yah.tests.perceptron.TrainingSamples;
 
-class NativeTrainingSamples implements TrainingSamples, NativeObject {
-    private long reference;
+class NativeTrainingSamples extends NativeObject implements TrainingSamples {
     private Buffer inputsMatrix, outputsMatrix, outputIndices;
 
     public NativeTrainingSamples(int batchSize, Buffer inputsMatrix, Buffer outputsMatrix,
@@ -14,23 +13,16 @@ class NativeTrainingSamples implements TrainingSamples, NativeObject {
         this.outputsMatrix = outputsMatrix;
         this.outputIndices = outputIndices;
         this.reference = create(batchSize, inputsMatrix, outputsMatrix, outputIndices);
-        if (reference == 0) throw new IllegalStateException("Error creating NativeTrainingSamples");
+        if (reference == 0)
+            throw new IllegalStateException("Error creating NativeTrainingSamples");
     }
 
     @Override
-    public long reference() {
-        return reference;
-    }
-
-    @Override
-    public void delete() {
-        if (reference != 0) {
-            delete(reference);
-            reference = 0;
-            inputsMatrix = null;
-            outputsMatrix = null;
-            outputIndices = null;
-        }
+    public void close() {
+        super.close();
+        inputsMatrix = null;
+        outputsMatrix = null;
+        outputIndices = null;
     }
 
     @Override
@@ -46,7 +38,8 @@ class NativeTrainingSamples implements TrainingSamples, NativeObject {
     private static native long create(int batchSize, Buffer inputsMatrix,
             Buffer outputsMatrix, Buffer outputIndices);
 
-    private static native void delete(long reference);
+    @Override
+    protected native void delete(long reference);
 
     private static native int size(long reference);
 

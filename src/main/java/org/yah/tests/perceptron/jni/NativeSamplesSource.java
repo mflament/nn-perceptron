@@ -1,7 +1,6 @@
 package org.yah.tests.perceptron.jni;
 
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 
 import org.yah.tests.perceptron.NeuralNetwork;
 import org.yah.tests.perceptron.SamplesProviders.SamplesProvider;
@@ -55,11 +54,6 @@ class NativeSamplesSource implements SamplesSource {
     }
 
     private ByteBuffer createExpectedIndices(TrainingSamplesProvider provider) {
-        ByteBuffer buffer = ByteBuffer.allocateDirect(provider.samples() * Integer.BYTES)
-                .order(ByteOrder.nativeOrder());
-        for (int i = 0; i < provider.samples(); i++) {
-            buffer.putInt(provider.outputIndex(i));
-        }
-        return buffer;
+        return NativeMatrix.create(1, provider.samples(), (r, c, v) -> provider.outputIndex(c));
     }
 }
