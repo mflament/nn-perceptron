@@ -6,10 +6,10 @@ package org.yah.tests.perceptron.matrix;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.Objects;
-import java.util.Random;
 
 import org.yah.tests.perceptron.InputSamples;
 import org.yah.tests.perceptron.NeuralNetwork;
+import org.yah.tests.perceptron.RandomUtils;
 import org.yah.tests.perceptron.TrainingSamples;
 import org.yah.tests.perceptron.matrix.MatrixSamplesSource.MatrixBatch;
 import org.yah.tests.perceptron.matrix.MatrixSamplesSource.MatrixSamples;
@@ -19,24 +19,6 @@ import org.yah.tests.perceptron.matrix.MatrixSamplesSource.MatrixSamples;
  *
  */
 public class MatrixNeuralNetwork<M extends Matrix<M>> implements NeuralNetwork {
-
-    public static final Random RANDOM = createRandom();
-
-    private static Random createRandom() {
-        long seed = seed();
-        return seed < 0 ? new Random() : new Random(seed);
-    }
-
-    public static long seed() {
-        long seed = -1;
-        String prop = System.getProperty("seed");
-        if (prop != null) {
-            try {
-                seed = Long.parseLong(prop);
-            } catch (NumberFormatException e) {}
-        }
-        return seed;
-    }
 
     private final ThreadLocal<BatchContext> contexts = new ThreadLocal<BatchContext>() {
         @Override
@@ -72,8 +54,8 @@ public class MatrixNeuralNetwork<M extends Matrix<M>> implements NeuralNetwork {
             // He-et-al Initialization
             // https://towardsdatascience.com/random-initialization-for-neural-networks-a-thing-of-the-past-bfcdd806bf9e
             double q = Math.sqrt(2.0 / features);
-            weights[layer].apply((r, c, f) -> RANDOM.nextGaussian() * q);
-            biases[layer].apply((r, c, f) -> RANDOM.nextGaussian() * q);
+            weights[layer].apply((r, c, f) -> RandomUtils.nextGaussian() * q);
+            //biases[layer].apply((r, c, f) -> RandomUtils.nextGaussian() * q);
         }
     }
 
@@ -237,8 +219,7 @@ public class MatrixNeuralNetwork<M extends Matrix<M>> implements NeuralNetwork {
             // cost derivative = outputs - y
             costDerivative(batch.expectedOutputs());
 
-            backward(layers - 1, activations[layers - 2]);
-            for (int layer = layers - 2; layer > 0; layer--) {
+            for (int layer = layers - 1; layer > 0; layer--) {
                 backward(layer, activations[layer - 1]);
             }
             backward(0, batch.inputs());

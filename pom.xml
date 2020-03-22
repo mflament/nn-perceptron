@@ -11,6 +11,7 @@
 	<properties>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+		<lwjgl.version>3.2.3</lwjgl.version>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -20,9 +21,14 @@
 		</dependency>
 
 		<dependency>
+			<groupId>org.yah.tools</groupId>
+			<artifactId>opencl-support</artifactId>
+			<version>0.0.1-SNAPSHOT</version>
+		</dependency>
+		<dependency>
 			<groupId>org.lwjgl</groupId>
 			<artifactId>lwjgl-opencl</artifactId>
-			<version>3.2.3</version>
+			<version>${lwjgl.version}</version>
 		</dependency>
 
 		<dependency>

@@ -2,6 +2,9 @@ package org.yah.tests.perceptron;
 
 import org.yah.tests.perceptron.SamplesProviders.TrainingSamplesProvider;
 import org.yah.tests.perceptron.jni.NativeNeuralNetwork;
+import org.yah.tests.perceptron.matrix.MatrixNeuralNetwork;
+import org.yah.tests.perceptron.matrix.array.CMArrayMatrix;
+import org.yah.tests.perceptron.opencl.CLNeuralNetwork;
 
 public class NeuralNetworkSandbox implements AutoCloseable {
 
@@ -81,9 +84,23 @@ public class NeuralNetworkSandbox implements AutoCloseable {
     }
 
     public static void main(String[] args) throws Exception {
-        // NeuralNetwork network = new MatrixNeuralNetwork<>(CMArrayMatrix::new, 2, 2,
-        // 2);
-        NeuralNetwork network = new NativeNeuralNetwork(2, 2, 2);
+        int[] layers = new int[] { 2, 2, 2 };
+        NeuralNetwork network = null;
+        if (args.length > 0) {
+            switch (args[0]) {
+            case "native":
+                network = new NativeNeuralNetwork(layers);
+                break;
+            case "cl":
+                network = new CLNeuralNetwork(layers);
+                break;
+            case "matrix":
+                network = new MatrixNeuralNetwork<>(CMArrayMatrix::new, layers);
+            }
+        }
+        if (network == null)
+            network = new MatrixNeuralNetwork<>(CMArrayMatrix::new, layers);
+
         try (NeuralNetworkSandbox sb = new NeuralNetworkSandbox(network)) {
             sb.runNAND();
         }

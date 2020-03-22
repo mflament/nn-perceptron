@@ -1,5 +1,6 @@
 package org.yah.tests.perceptron.flowers;
 
+import java.io.IOException;
 import java.nio.IntBuffer;
 import java.util.Random;
 import java.util.concurrent.CountDownLatch;
@@ -10,11 +11,14 @@ import org.lwjgl.BufferUtils;
 import org.yah.tests.perceptron.AbstractGLDemo;
 import org.yah.tests.perceptron.GLDemoLauncher;
 import org.yah.tests.perceptron.NeuralNetwork;
+import org.yah.tests.perceptron.RandomUtils;
 import org.yah.tests.perceptron.SamplesProviders.TrainingSamplesProvider;
 import org.yah.tests.perceptron.SamplesSource;
 import org.yah.tests.perceptron.TrainingSamples;
+import org.yah.tests.perceptron.jni.NativeNeuralNetwork;
 import org.yah.tests.perceptron.matrix.MatrixNeuralNetwork;
 import org.yah.tests.perceptron.matrix.array.CMArrayMatrix;
+import org.yah.tests.perceptron.opencl.CLNeuralNetwork;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
@@ -35,7 +39,7 @@ public class FlowersDemo extends AbstractGLDemo implements TrainingSamplesProvid
 
     private static final int[] LAYERS = { 2, 16, 2 };
     private static final int SAMPLES = (int) (FLOWERS * 0.005);
-    private static final int EVAL_BATCH_SIZE = 0;
+    private static final int EVAL_BATCH_SIZE = 64;
     private static final int BATCH_SIZE = 64;
     private static final double LEARNING_RATE = 0.5f;
 
@@ -60,7 +64,7 @@ public class FlowersDemo extends AbstractGLDemo implements TrainingSamplesProvid
 
     private Texture texture;
     private FlowersTextureData textureData;
-    
+
     private CountDownLatch exitLatch;
 
     public FlowersDemo(NeuralNetwork network) {
@@ -80,7 +84,7 @@ public class FlowersDemo extends AbstractGLDemo implements TrainingSamplesProvid
         createTrainingBatches(samplesSource);
 
         System.out.println("Flowers demo config:");
-        System.out.println("  Network: " + network);
+        System.out.println("  Network: " + network + " (" + network.getClass().getSimpleName() + ")");
         System.out.println("  flowers: " + allFlowers.size());
         System.out.println(String.format("  samples: %d (%d x %d), %s%%", trainingFlowers.size(),
                 trainingFlowers.batchCount(), trainingFlowers.batchSize(),
@@ -166,7 +170,7 @@ public class FlowersDemo extends AbstractGLDemo implements TrainingSamplesProvid
     }
 
     private void randomizeFlowers() {
-        Random random = MatrixNeuralNetwork.RANDOM;
+        Random random = RandomUtils.RANDOM;
         for (int i = 0; i < randomFlowers.length; i++)
             randomFlowers[i] = i;
         for (int i = 0; i < randomFlowers.length; i++)
@@ -209,7 +213,7 @@ public class FlowersDemo extends AbstractGLDemo implements TrainingSamplesProvid
     }
 
     private void createFlowers() {
-        long seed = MatrixNeuralNetwork.seed();
+        long seed = RandomUtils.SEED;
         OpenSimplexNoise noise = new OpenSimplexNoise(seed < 0 ? System.currentTimeMillis() : seed);
         int flowerIndex = 0;
         for (int y = 0; y < HEIGHT; y++) {
@@ -237,12 +241,13 @@ public class FlowersDemo extends AbstractGLDemo implements TrainingSamplesProvid
     private void trainingLoop() {
         try {
             schedule(this::renderFlowers);
-            
+
             double overallAccuracy = network.evaluate(allFlowers, outputs);
             double trainingAccuracy = network.evaluate(trainingFlowers, null);
             System.out.println(String.format(
-                    "training accuracy: %.2f%%; overall accuracy: %.2f%%", trainingAccuracy * 100, overallAccuracy * 100));
-            
+                    "training accuracy: %.2f%%; overall accuracy: %.2f%%", trainingAccuracy * 100,
+                    overallAccuracy * 100));
+
             lastLog = System.currentTimeMillis();
             while (!destroyed) {
                 while (paused && !destroyed) {
@@ -295,7 +300,8 @@ public class FlowersDemo extends AbstractGLDemo implements TrainingSamplesProvid
         }
         for (int i = 0; i < SAMPLES; i++) {
             int flowerIndex = randomFlowers[i];
-            textureData.setPixel(flowerIndex, SAMPLED_FLOWER_COLORS[flowers[flowerIndex] == outputs[flowerIndex] ? 1 : 0]);
+            textureData.setPixel(flowerIndex,
+                    SAMPLED_FLOWER_COLORS[flowers[flowerIndex] == outputs[flowerIndex] ? 1 : 0]);
         }
         texture.load(textureData);
     }
@@ -372,10 +378,22 @@ public class FlowersDemo extends AbstractGLDemo implements TrainingSamplesProvid
         public boolean isManaged() { return false; }
     }
 
-    public static void main(String[] args) {
-        MatrixNeuralNetwork<CMArrayMatrix> network = new MatrixNeuralNetwork<>(CMArrayMatrix::new,
-                LAYERS);
-//        NativeNeuralNetwork network = new NativeNeuralNetwork(LAYERS);
+    public static void main(String[] args) throws IOException {
+        NeuralNetwork network = null;
+        if (args.length > 0) {
+            switch (args[0]) {
+            case "native":
+                network = new NativeNeuralNetwork(LAYERS);
+                break;
+            case "cl":
+                network = new CLNeuralNetwork(LAYERS);
+                break;
+            case "matrix":
+                network = new MatrixNeuralNetwork<>(CMArrayMatrix::new, LAYERS);
+            }
+        }
+        if (network == null)
+            network = new MatrixNeuralNetwork<>(CMArrayMatrix::new, LAYERS);
         GLDemoLauncher.launch(new FlowersDemo(network));
     }
 }
