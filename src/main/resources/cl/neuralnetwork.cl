@@ -57,6 +57,7 @@ __kernel void forward(const int neurons,
  */
 __kernel void indices(const int outputs, 
 											__global const float* activation, 
+											const int indicesOffset,
 										  __global int* indices) {
 	const int tc = get_global_id(0); // sample
 	const int colOffset = tc * outputs;
@@ -66,7 +67,7 @@ __kernel void indices(const int outputs,
 			maxIndex = r;
 		}
 	}
-	indices[tc] = maxIndex;
+	indices[indicesOffset + tc] = maxIndex;
 }
 
 /**

@@ -1,35 +1,66 @@
 package org.yah.tests.perceptron.flowers;
 
+import static org.lwjgl.glfw.GLFW.glfwPollEvents;
+import static org.lwjgl.opengl.GL11.GL_TRIANGLES;
+import static org.lwjgl.opengl.GL11.glDrawArrays;
+import static org.lwjgl.opengl.GL11.glViewport;
+import static org.lwjgl.opengl.GL13.GL_TEXTURE0;
+import static org.lwjgl.opengl.GL13.GL_TEXTURE1;
+import static org.lwjgl.opengl.GL13.GL_TEXTURE2;
+import static org.lwjgl.opengl.GL13.glActiveTexture;
+import static org.lwjgl.opengl.GL20.glUniform1i;
+import static org.lwjgl.opengl.GL20.glUniform4fv;
+
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.UncheckedIOException;
+import java.nio.ByteBuffer;
+import java.nio.DoubleBuffer;
+import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
-import java.util.Random;
-import java.util.concurrent.CountDownLatch;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.lwjgl.BufferUtils;
-import org.yah.tests.perceptron.AbstractGLDemo;
-import org.yah.tests.perceptron.GLDemoLauncher;
+import org.lwjgl.glfw.GLFW;
+import org.lwjgl.opengl.GL;
+import org.lwjgl.system.MemoryUtil;
+import org.yah.games.opengl.Color4f;
+import org.yah.games.opengl.shader.Program;
+import org.yah.games.opengl.shader.Shader;
+import org.yah.games.opengl.texture.Texture2D;
+import org.yah.games.opengl.texture.TextureDataType;
+import org.yah.games.opengl.texture.TextureFormat;
+import org.yah.games.opengl.texture.TextureInternalFormat;
+import org.yah.games.opengl.texture.TextureMagFilter;
+import org.yah.games.opengl.texture.TextureMinFilter;
+import org.yah.games.opengl.texture.TextureWrap;
+import org.yah.games.opengl.vao.ComponentType;
+import org.yah.games.opengl.vao.VAO;
+import org.yah.games.opengl.vbo.BufferAccess;
+import org.yah.games.opengl.vbo.BufferAccess.Frequency;
+import org.yah.games.opengl.vbo.BufferAccess.Nature;
+import org.yah.games.opengl.vbo.VBO;
+import org.yah.games.opengl.window.GLWindow;
 import org.yah.tests.perceptron.NeuralNetwork;
-import org.yah.tests.perceptron.RandomUtils;
-import org.yah.tests.perceptron.SamplesProviders.TrainingSamplesProvider;
 import org.yah.tests.perceptron.SamplesSource;
 import org.yah.tests.perceptron.TrainingSamples;
 import org.yah.tests.perceptron.jni.NativeNeuralNetwork;
 import org.yah.tests.perceptron.matrix.MatrixNeuralNetwork;
 import org.yah.tests.perceptron.matrix.array.CMArrayMatrix;
+import org.yah.tests.perceptron.mt.MTNeuralNetwork;
 import org.yah.tests.perceptron.opencl.CLNeuralNetwork;
 
-import com.badlogic.gdx.Gdx;
-import com.badlogic.gdx.Input;
-import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
-import com.badlogic.gdx.graphics.Pixmap;
-import com.badlogic.gdx.graphics.Pixmap.Format;
-import com.badlogic.gdx.graphics.Texture;
-import com.badlogic.gdx.graphics.TextureData;
-import com.badlogic.gdx.graphics.g2d.SpriteBatch;
-
-public class FlowersDemo extends AbstractGLDemo implements TrainingSamplesProvider {
+public class FlowersDemo {
 
     private static final int WIDTH = 800;
     private static final int HEIGHT = 600;
@@ -39,165 +70,413 @@ public class FlowersDemo extends AbstractGLDemo implements TrainingSamplesProvid
 
     private static final int[] LAYERS = { 2, 16, 2 };
     private static final int SAMPLES = (int) (FLOWERS * 0.005);
-    private static final int EVAL_BATCH_SIZE = 64;
-    private static final int BATCH_SIZE = 64;
+    private static final int EVAL_BATCH_SIZE = 0;
+    private static final int TRAINING_BATCH_SIZE = 256;
     private static final double LEARNING_RATE = 0.5f;
 
-    private ExecutorService executor;
+    private final float[] QUAD_VERTICES = { -1, -1, 0, 1, //
+            -1, 1, 0, 0, //
+            1, 1, 1, 0, //
+            -1, -1, 0, 1, //
+            1, 1, 1, 0, //
+            1, -1, 1, 1 };
 
-    private int[] FLOWER_COLORS = { 0xff0000ee, 0xff00ee00 };
-    private int[] DARKER_FLOWER_COLORS = { 0xff0000aa, 0xff00aa00 };
-    private int[] SAMPLED_FLOWER_COLORS = { 0xff000000, 0xffffffff };
+    private Color4f[] FLOWER_COLORS = { new Color4f(0.9f, 0, 0, 1), new Color4f(0, 0.9f, 0, 1) };
 
-    private int[] flowers = new int[FLOWERS];
-    private int[] randomFlowers = new int[FLOWERS];
-    private int[] outputs = new int[FLOWERS];
+    private List<Runnable> tasks = new ArrayList<>();
+
+    private final ExecutorService executor;
+    private final Object monitor = new Object();
 
     private final NeuralNetwork network;
+    private final TrainingSamples allFlowers;
+    private final TrainingSamples trainingFlowers;
+
+    private GLWindow window;
     private boolean paused = true;
     private boolean destroyed;
-    private long lastLog;
-    private long epoch;
 
-    private TrainingSamples allFlowers;
-    private TrainingSamples trainingFlowers;
+    private final IntBuffer outputsBuffer;
 
-    private Texture texture;
-    private FlowersTextureData textureData;
+    private Program renderProgram;
+    private VBO vbo;
+    private VAO vao;
+    private Texture2D flowersTexture, outputsTexture, samplesTexture;
 
-    private CountDownLatch exitLatch;
+    private OutputStream snapshotOutputStream;
+    private InputStream snapshotInputStream;
 
     public FlowersDemo(NeuralNetwork network) {
         this.network = network;
-    }
-
-    @Override
-    public void create() {
-        super.create();
         executor = Executors.newSingleThreadExecutor();
-        textureData = new FlowersTextureData();
-        texture = new Texture(textureData);
 
         SamplesSource samplesSource = network.createSampleSource();
-        createFlowers();
-        createFlowersBatch(samplesSource);
-        createTrainingBatches(samplesSource);
+        AllFlowersProvider flowersProvider = new AllFlowersProvider(WIDTH, HEIGHT, NOISE_SCALE);
+        allFlowers = samplesSource.createTraining(flowersProvider, EVAL_BATCH_SIZE);
+        TrainingFlowersProvider trainingProvider = new TrainingFlowersProvider(flowersProvider, SAMPLES);
+        trainingFlowers = samplesSource.createTraining(trainingProvider, TRAINING_BATCH_SIZE);
 
+        printInfo();
+
+        window = GLWindow.builder()
+                .withDebug()
+                .withTitle("Flowers Demo - " + network.getClass().getSimpleName())
+                .withSize(WIDTH, HEIGHT)
+                .withKeyPressHandler(this::keyPressed)
+                .build();
+        window.centerOnScreen();
+        GL.createCapabilities();
+
+        renderProgram = Program.builder()
+                .with(Shader.vertexShader("glsl/flowers.vs.glsl"))
+                .with(Shader.fragmentShader("glsl/flowers.fs.glsl"))
+                .build();
+
+        vbo = VBO.builder().withData(QUAD_VERTICES, BufferAccess.from(Frequency.STATIC, Nature.DRAW)).build();
+        vao = VAO.builder(renderProgram, vbo)
+                .withAttribute("position", 2, ComponentType.FLOAT, false, ComponentType.FLOAT.sizeOf(4), 0)
+                .withAttribute("aInputs",
+                        2,
+                        ComponentType.FLOAT,
+                        false,
+                        ComponentType.FLOAT.sizeOf(4),
+                        ComponentType.FLOAT.sizeOf(2))
+                .build();
+        vao.bind();
+
+        renderProgram.use();
+        glUniform4fv(renderProgram.findUniformLocation("flowerColors"), colorBuffer(FLOWER_COLORS));
+        glUniform1i(renderProgram.findUniformLocation("expectedFlowers"), 0);
+        glUniform1i(renderProgram.findUniformLocation("actualFlowers"), 1);
+        glUniform1i(renderProgram.findUniformLocation("sampledFlowers"), 2);
+
+        int samples = flowersProvider.samples();
+        int outputs[] = new int[samples];
+        for (int i = 0; i < samples; i++) {
+            outputs[i] = flowersProvider.outputIndex(i);
+        }
+
+        outputsBuffer = BufferUtils.createIntBuffer(samples);
+        outputsBuffer.put(outputs).flip();
+
+        flowersTexture = Texture2D.builder(WIDTH, HEIGHT)
+                .withInternalFormat(TextureInternalFormat.R32UI)
+                .minFilter(TextureMinFilter.NEAREST)
+                .magFilter(TextureMagFilter.NEAREST)
+                .wrapS(TextureWrap.REPEAT)
+                .withData(0, TextureFormat.RED_INTEGER, TextureDataType.UNSIGNED_INT,
+                        MemoryUtil.memByteBuffer(outputsBuffer))
+                .build();
+
+        outputsTexture = Texture2D.builder(WIDTH, HEIGHT)
+                .withInternalFormat(TextureInternalFormat.R32UI)
+                .minFilter(TextureMinFilter.NEAREST)
+                .magFilter(TextureMagFilter.NEAREST)
+                .wrapS(TextureWrap.REPEAT)
+                .withData(0, TextureFormat.RED_INTEGER, TextureDataType.UNSIGNED_INT, null)
+                .build();
+
+        ByteBuffer buffer = BufferUtils.createByteBuffer(samples);
+        for (int i = 0; i < trainingProvider.samples(); i++) {
+            double dx = trainingProvider.input(i, 0);
+            double dy = trainingProvider.input(i, 1);
+            int index = (int) ((dy * HEIGHT) * WIDTH + (dx * WIDTH));
+            buffer.put(index, (byte) 1);
+        }
+
+        buffer.flip();
+        samplesTexture = Texture2D.builder(WIDTH, HEIGHT)
+                .withInternalFormat(TextureInternalFormat.R8UI)
+                .minFilter(TextureMinFilter.NEAREST)
+                .magFilter(TextureMagFilter.NEAREST)
+                .wrapS(TextureWrap.REPEAT)
+                .withData(0, TextureFormat.RED_INTEGER, TextureDataType.UNSIGNED_BYTE, buffer)
+                .build();
+    }
+
+    private FloatBuffer colorBuffer(Color4f[] colors) {
+        FloatBuffer fb = BufferUtils.createFloatBuffer(colors.length * 4);
+        for (int i = 0; i < colors.length; i++) {
+            fb.put(colors[i].r);
+            fb.put(colors[i].g);
+            fb.put(colors[i].b);
+            fb.put(colors[i].a);
+        }
+        return fb.flip();
+    }
+
+    private void printInfo() {
         System.out.println("Flowers demo config:");
         System.out.println("  Network: " + network + " (" + network.getClass().getSimpleName() + ")");
         System.out.println("  flowers: " + allFlowers.size());
         System.out.println(String.format("  samples: %d (%d x %d), %s%%", trainingFlowers.size(),
                 trainingFlowers.batchCount(), trainingFlowers.batchSize(),
                 trainingFlowers.size() / (double) allFlowers.size() * 100.0));
-        exitLatch = new CountDownLatch(1);
-        executor.submit(this::trainingLoop);
     }
 
-    private void createFlowersBatch(SamplesSource samplesSource) {
-        double[][] inputs = new double[FLOWERS][2];
-        int flowerIndex = 0;
-        for (int y = 0; y < HEIGHT; y++) {
-            double dy = y / (double) HEIGHT;
-            for (int x = 0; x < WIDTH; x++) {
-                double[] flower = inputs[flowerIndex];
-                flower[0] = x / (double) WIDTH;
-                flower[1] = dy;
-                flowerIndex++;
+    public void start() {
+        window.show();
+        glViewport(0, 0, WIDTH, HEIGHT);
+
+        List<Runnable> nextTasks = new ArrayList<Runnable>();
+        executor.submit(new TrainingLoop());
+        while (!window.isCloseRequested()) {
+            glfwPollEvents();
+            synchronized (this) {
+                List<Runnable> swap = tasks;
+                tasks = nextTasks;
+                nextTasks = swap;
             }
+            for (Runnable runnable : nextTasks) {
+                runnable.run();
+            }
+            nextTasks.clear();
+
+            render();
         }
-        allFlowers = samplesSource.createTraining(this, EVAL_BATCH_SIZE);
+        dispose();
     }
 
-    @Override
-    public int samples() {
-        return FLOWERS;
+    private void render() {
+        renderProgram.use();
+        vao.bind();
+
+        glActiveTexture(GL_TEXTURE0);
+        flowersTexture.bind();
+
+        glActiveTexture(GL_TEXTURE1);
+        outputsTexture.bind();
+
+        glActiveTexture(GL_TEXTURE2);
+        samplesTexture.bind();
+
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        window.swapBuffers();
     }
 
-    @Override
-    public int features() {
-        return 2;
+    private synchronized void schedule(Runnable runnable) {
+        tasks.add(runnable);
     }
 
-    @Override
-    public double input(int sample, int feature) {
-        return feature == 0 ? (sample % WIDTH) / (double) WIDTH
-                : (sample / WIDTH) / (double) HEIGHT;
-    }
-
-    @Override
-    public int outputIndex(int sample) {
-        return flowers[sample];
-    }
-
-    private void createTrainingBatches(SamplesSource samplesSource) {
-        int flowerIndex;
-        int samples = Math.min(FLOWERS, SAMPLES);
-        double[][] inputs = new double[samples][2];
-        int[] expecteds = new int[samples];
-        randomizeFlowers();
-        for (int sample = 0; sample < samples; sample++) {
-            flowerIndex = randomFlowers[sample];
-            int x = flowerIndex % WIDTH;
-            int y = flowerIndex / WIDTH;
-            inputs[sample][0] = x / (double) WIDTH;
-            inputs[sample][1] = y / (double) HEIGHT;
-            expecteds[sample] = flowers[flowerIndex];
+    private void keyPressed(int key, int scancode, int mods) {
+        switch (key) {
+        case GLFW.GLFW_KEY_SPACE:
+            notifyTrainingLoop(() -> paused = !paused);
+            break;
+        case GLFW.GLFW_KEY_ESCAPE:
+            window.requestClose();
+            break;
         }
-        TrainingSamplesProvider provider = new TrainingSamplesProvider() {
-            @Override
-            public int samples() {
-                return samples;
-            }
-
-            @Override
-            public double input(int sample, int feature) {
-                int flowerIndex = randomFlowers[sample];
-                return FlowersDemo.this.input(flowerIndex, feature);
-            }
-
-            @Override
-            public int features() {
-                return 2;
-            }
-
-            @Override
-            public int outputIndex(int sample) {
-                int flowerIndex = randomFlowers[sample];
-                return flowers[flowerIndex];
-            }
-        };
-        trainingFlowers = samplesSource.createTraining(provider, BATCH_SIZE);
     }
 
-    private void randomizeFlowers() {
-        Random random = RandomUtils.RANDOM;
-        for (int i = 0; i < randomFlowers.length; i++)
-            randomFlowers[i] = i;
-        for (int i = 0; i < randomFlowers.length; i++)
-            swap(randomFlowers, i, random.nextInt(randomFlowers.length));
+    private void notifyTrainingLoop(Runnable action) {
+        synchronized (monitor) {
+            action.run();
+            monitor.notify();
+        }
     }
 
-    @Override
-    public void configure(Lwjgl3ApplicationConfiguration config) {
-        config.setWindowedMode(WIDTH, HEIGHT);
-    }
+    private void dispose() {
+        notifyTrainingLoop(() -> destroyed = true);
+        executor.shutdown();
 
-    @Override
-    public void dispose() {
-        destroyed = true;
+        vao.delete();
+        vbo.delete();
+        renderProgram.delete();
+        flowersTexture.delete();
+        GLFW.glfwTerminate();
+
         try {
-            exitLatch.await();
+            executor.awaitTermination(1, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
-        executor.shutdownNow();
         closeQuietly(allFlowers);
         closeQuietly(trainingFlowers);
-        closeQuietly(network);
-        super.dispose();
+
+        closeQuietly(snapshotOutputStream);
+        closeQuietly(snapshotInputStream);
     }
 
-    private void closeQuietly(Object o) {
+    private class TrainingLoop implements Runnable {
+        private double overallAccuracy, trainingAccuracy;
+        private final AtomicBoolean updateComplete = new AtomicBoolean();
+
+        @Override
+        public void run() {
+            try {
+                updateOutputs();
+
+                trainingAccuracy = network.evaluate(trainingFlowers);
+                System.out.println(String.format(
+                        "training accuracy: %.2f%%; overall accuracy: %.2f%%",
+                        trainingAccuracy * 100, overallAccuracy * 100));
+
+                long lastLog = System.currentTimeMillis();
+                int lastEepochs = 0;
+                long epochs = 0;
+                long trainingTime = 0, evaluationTime = 0, trainingEvaluationTime = 0, start;
+                while (true) {
+                    synchronized (monitor) {
+                        while (paused && !destroyed) {
+                            monitor.wait();
+                            lastLog = System.currentTimeMillis();
+                        }
+                        if (destroyed)
+                            break;
+                    }
+
+                    start = System.nanoTime();
+                    network.train(trainingFlowers, LEARNING_RATE);
+                    //snapshot(epochs);
+                    //checkSnapshot(epochs);
+
+                    trainingTime += System.nanoTime() - start;
+                    lastEepochs++;
+                    epochs++;
+
+                    long elapsed = System.currentTimeMillis() - lastLog;
+                    if (elapsed > 1000) {
+                        outputsBuffer.position(0);
+
+                        start = System.nanoTime();
+                        overallAccuracy = network.evaluate(allFlowers, outputsBuffer);
+                        evaluationTime = System.nanoTime() - start;
+
+                        start = System.nanoTime();
+                        trainingAccuracy = network.evaluate(trainingFlowers);
+                        trainingEvaluationTime = System.nanoTime() - start;
+
+                        long samples = lastEepochs * SAMPLES;
+                        double eps = lastEepochs / (elapsed / 1000.0);
+                        double sms = samples / elapsed;
+                        long avgtt = TimeUnit.NANOSECONDS.toMillis(trainingTime) / lastEepochs;
+                        long et = TimeUnit.NANOSECONDS.toMillis(evaluationTime);
+                        long tet = TimeUnit.NANOSECONDS.toMillis(trainingEvaluationTime);
+                        System.out.println(String.format(
+                                "%-8d: training accuracy: %.2f%%; overall accuracy: %.2f%%; %.2f e/s; %.2f s/ms; training: %dms; eval: %dms; training eval:%dms",
+                                epochs,
+                                trainingAccuracy * 100, overallAccuracy * 100,
+                                eps, sms,
+                                avgtt, et, tet));
+
+                        updateOutputs();
+                        lastLog = System.currentTimeMillis();
+                        lastEepochs = 0;
+                        trainingTime = 0;
+                    }
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
+        private void checkSnapshot(long epoch) {
+            // byte[] expected;
+            ByteBuffer buffer;
+            try {
+                if (snapshotInputStream == null) { snapshotInputStream = new FileInputStream("snapshot.bin"); }
+                buffer = ByteBuffer.wrap(snapshotInputStream.readAllBytes());
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+
+            DoubleBuffer actualBuffer = network.snapshot().asDoubleBuffer();
+
+            DoubleBuffer doubleBuffer = buffer.asDoubleBuffer();
+            for (int l = 0; l < network.layers(); l++) {
+                int neurons = network.neurons(l);
+                int features = network.features(l);
+                for (int n = 0; n < neurons; n++) {
+                    for (int f = 0; f < features; f++) {
+                        double expected = doubleBuffer.get();
+                        double actual = actualBuffer.get();
+                        if (expected != actual)
+                            throw new IllegalStateException(
+                                    String.format("mimatch at layer %d,weight(%d, %d)", l, n, f));
+                    }
+                }
+                for (int n = 0; n < neurons; n++) {
+                    double expected = doubleBuffer.get();
+                    double actual = actualBuffer.get();
+                    if (expected != actual)
+                        throw new IllegalStateException(
+                                String.format("mimatch at layer %d, bias(%d)", l, n));
+                }
+
+            }
+//            if (expected.length < 16) {
+//                System.out.println("End of snapshot");
+//                return;
+//            }
+//
+//            byte[] actual = networkSnapshot();
+//            for (int i = 0; i < actual.length; i++) {
+//                if (actual[i] != expected[i])
+//                    throw new IllegalStateException("snapshot mismatch " + epoch);
+//            }
+        }
+
+        boolean snapshoted = false;
+
+        private void snapshot(long epoch) {
+            if (snapshoted)
+                return;
+            ByteBuffer snapshot = network.snapshot();
+            // byte[] digest = networkSnapshot();
+            try {
+                if (snapshotOutputStream == null) { snapshotOutputStream = new FileOutputStream("snapshot.bin"); }
+                snapshotOutputStream.write(snapshot.array());
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+            snapshoted = true;
+        }
+
+        private byte[] networkSnapshot() {
+            ByteBuffer snapshot = network.snapshot();
+            MessageDigest md;
+            try {
+                md = MessageDigest.getInstance("MD5");
+            } catch (NoSuchAlgorithmException e) {
+                throw new RuntimeException(e);
+            }
+            md.update(snapshot);
+            byte[] digest = md.digest();
+            return digest;
+        }
+
+        private void updateOutputs() throws InterruptedException {
+            outputsBuffer.position(0);
+            overallAccuracy = network.evaluate(allFlowers, outputsBuffer);
+
+            synchronized (monitor) {
+                updateComplete.set(false);
+                schedule(this::copyOutputs);
+                while (!destroyed && !updateComplete.get())
+                    monitor.wait();
+            }
+        }
+
+        private void copyOutputs() {
+            outputsTexture.bind();
+            outputsBuffer.position(0);
+            outputsTexture.updateData(TextureFormat.RED_INTEGER, TextureDataType.UNSIGNED_INT,
+                    MemoryUtil.memByteBuffer(outputsBuffer));
+            notifyTrainingLoop(() -> updateComplete.set(true));
+        }
+    }
+
+    public static void main(String[] args) throws IOException {
+        NeuralNetwork network = createNetwork(args.length > 0 ? args[0] : "matrix");
+        try {
+            new FlowersDemo(network).start();
+        } finally {
+            closeQuietly(network);
+        }
+    }
+
+    private static void closeQuietly(Object o) {
         if (o instanceof AutoCloseable) {
             try {
                 ((AutoCloseable) o).close();
@@ -207,193 +486,21 @@ public class FlowersDemo extends AbstractGLDemo implements TrainingSamplesProvid
         }
     }
 
-    @Override
-    protected void render(SpriteBatch spriteBatch) {
-        spriteBatch.draw(texture, 0, 0, getWidth(), getHeight());
-    }
-
-    private void createFlowers() {
-        long seed = RandomUtils.SEED;
-        OpenSimplexNoise noise = new OpenSimplexNoise(seed < 0 ? System.currentTimeMillis() : seed);
-        int flowerIndex = 0;
-        for (int y = 0; y < HEIGHT; y++) {
-            double dy = y / (double) HEIGHT;
-            for (int x = 0; x < WIDTH; x++) {
-                double dx = x / (double) WIDTH;
-                double n = noise.eval(dx * NOISE_SCALE, dy * NOISE_SCALE);
-                n = (n + 1) / 2.0;
-                flowers[flowerIndex++] = (int) (n + 0.5);
-            }
-        }
-    }
-
-    @Override
-    public boolean keyDown(int keycode) {
-        switch (keycode) {
-        case Input.Keys.SPACE:
-            paused = !paused;
-            return true;
-        default:
-            return super.keyDown(keycode);
-        }
-    }
-
-    private void trainingLoop() {
-        try {
-            schedule(this::renderFlowers);
-
-            double overallAccuracy = network.evaluate(allFlowers, outputs);
-            double trainingAccuracy = network.evaluate(trainingFlowers, null);
-            System.out.println(String.format(
-                    "training accuracy: %.2f%%; overall accuracy: %.2f%%", trainingAccuracy * 100,
-                    overallAccuracy * 100));
-
-            lastLog = System.currentTimeMillis();
-            while (!destroyed) {
-                while (paused && !destroyed) {
-                    try {
-                        Thread.sleep(100);
-                    } catch (InterruptedException e) {}
-                }
-                if (destroyed)
-                    return;
-
-                network.train(trainingFlowers, LEARNING_RATE);
-                epoch++;
-
-                long elapsed = System.currentTimeMillis() - lastLog;
-                if (elapsed > 1000) {
-                    synchronized (outputs) {
-                        overallAccuracy = network.evaluate(allFlowers, outputs);
-                    }
-                    schedule(this::renderFlowers);
-                    long samples = epoch * SAMPLES;
-                    trainingAccuracy = network.evaluate(trainingFlowers, null);
-                    System.out.println(String.format(
-                            "training accuracy: %.2f%%; overall accuracy: %.2f%%; e/s: %.2f; Ms/ms: %.2f",
-                            trainingAccuracy * 100, overallAccuracy * 100,
-                            epoch / (elapsed / 1000.0),
-                            samples / (double) elapsed));
-                    lastLog = System.currentTimeMillis();
-                    epoch = 0;
-                }
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        } finally {
-            exitLatch.countDown();
-        }
-    }
-
-    private void renderFlowers() {
-        synchronized (outputs) {
-            for (int flowerIndex = 0; flowerIndex < FLOWERS; flowerIndex++) {
-                int flower = flowers[flowerIndex];
-                int flowerColor;
-                if (outputs[flowerIndex] != flower)
-                    flowerColor = DARKER_FLOWER_COLORS[flower];
-                else
-                    flowerColor = FLOWER_COLORS[flower];
-                textureData.putPixel(flowerColor);
-            }
-            textureData.flip();
-        }
-        for (int i = 0; i < SAMPLES; i++) {
-            int flowerIndex = randomFlowers[i];
-            textureData.setPixel(flowerIndex,
-                    SAMPLED_FLOWER_COLORS[flowers[flowerIndex] == outputs[flowerIndex] ? 1 : 0]);
-        }
-        texture.load(textureData);
-    }
-
-    private static void swap(int[] array, int a, int b) {
-        int buff = array[a];
-        array[a] = array[b];
-        array[b] = buff;
-    }
-
-    private static class FlowersTextureData implements TextureData {
-
-        private static final Format FORMAT = Format.RGBA8888;
-        private static final int GL_FORMAT = Format.toGlFormat(FORMAT);
-        private static final int GL_TYPE = Format.toGlType(FORMAT);
-
-        private final IntBuffer buffer;
-
-        public FlowersTextureData() {
-            buffer = BufferUtils.createIntBuffer(WIDTH * HEIGHT);
-        }
-
-        public void flip() {
-            buffer.flip();
-        }
-
-        public void putPixel(int color) {
-            buffer.put(color);
-        }
-
-        public void setPixel(int index, int color) {
-            buffer.put(index, color);
-        }
-
-        @Override
-        public TextureDataType getType() { return TextureDataType.Custom; }
-
-        @Override
-        public boolean isPrepared() { return true; }
-
-        @Override
-        public void prepare() {}
-
-        @Override
-        public Pixmap consumePixmap() {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public boolean disposePixmap() {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public void consumeCustomData(int target) {
-            Gdx.gl.glTexImage2D(target, 0, GL_FORMAT, WIDTH, HEIGHT, 0, GL_FORMAT, GL_TYPE, buffer);
-        }
-
-        @Override
-        public int getWidth() { return WIDTH; }
-
-        @Override
-        public int getHeight() { return HEIGHT; }
-
-        @Override
-        public Format getFormat() { return FORMAT; }
-
-        @Override
-        public boolean useMipMaps() {
-            return false;
-        }
-
-        @Override
-        public boolean isManaged() { return false; }
-    }
-
-    public static void main(String[] args) throws IOException {
+    private static NeuralNetwork createNetwork(String arg) throws IOException {
         NeuralNetwork network = null;
-        if (args.length > 0) {
-            switch (args[0]) {
-            case "native":
-                network = new NativeNeuralNetwork(LAYERS);
-                break;
-            case "cl":
-                network = new CLNeuralNetwork(LAYERS);
-                break;
-            case "matrix":
-                network = new MatrixNeuralNetwork<>(CMArrayMatrix::new, LAYERS);
-            }
-        }
-        if (network == null)
+        switch (arg) {
+        case "native":
+            network = new NativeNeuralNetwork(LAYERS);
+            break;
+        case "cl":
+            network = new CLNeuralNetwork(LAYERS);
+            break;
+        case "mt":
+            network = new MTNeuralNetwork(LAYERS);
+            break;
+        default:
             network = new MatrixNeuralNetwork<>(CMArrayMatrix::new, LAYERS);
-        GLDemoLauncher.launch(new FlowersDemo(network));
+        }
+        return network;
     }
 }

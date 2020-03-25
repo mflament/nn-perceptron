@@ -2,6 +2,7 @@ package org.yah.tests.perceptron.opencl;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.DoubleBuffer;
 import java.nio.IntBuffer;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -56,15 +57,15 @@ public class CLNeuralNetwork implements NeuralNetwork, AutoCloseable {
 
     private final KernelNDRange range;
 
-    private IntBuffer outputs;
-    private CLBuffer outputBuffer;
+    private IntBuffer outputIndices;
+    private CLBuffer clOutputBuffer;
 
     public CLNeuralNetwork(int... layerSizes) throws IOException {
         this(null, layerSizes);
     }
 
     public CLNeuralNetwork(CLContext clContext, int... layerSizes) throws IOException {
-        this.environment = new CLEnvironment(clContext, "cl/neuralnetwork.cl", ""); //-DDEBUG
+        this.environment = new CLEnvironment(clContext, "cl/neuralnetwork.cl", ""); // -DDEBUG
         this.layerSizes = layerSizes;
         this.layers = layerSizes.length - 1;
         this.weightBuffers = new CLBuffer[layers];
@@ -127,24 +128,61 @@ public class CLNeuralNetwork implements NeuralNetwork, AutoCloseable {
     }
 
     @Override
+    public void snapshot(int layer, DoubleBuffer buffer) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
     public SamplesSource createSampleSource() {
         return new CLSamplesSource(this);
     }
 
     @Override
+    public void propagate(InputSamples samples, IntBuffer outputs) {
+        // TODO Auto-generated method stub
+
+    }
+
+    @Override
     public void propagate(InputSamples samples, int[] outputs) {
+
+    }
+
+    @Override
+    public double evaluate(TrainingSamples samples, IntBuffer outputs) {
         CLTrainingSamples clsamples = (CLTrainingSamples) samples;
-        assert outputs.length == samples.size();
+        assert outputs.remaining() == samples.size();
+
+        IntBuffer buffer = getOutputsBuffer(outputs);
+
         try (SamplesContext context = new SamplesContext(layers * samples.batchCount())) {
             Iterator<CLTrainingBatch> batchIterator = clsamples.iterator();
             while (batchIterator.hasNext()) {
                 CLTrainingBatch batch = batchIterator.next();
                 context.propagate(batch);
                 environment.finish();
-                // copy outputs
-                this.outputs.get(outputs, batch.offset, batch.batchSize);
+
+                if (outputs != buffer) {
+                    // copy outputs
+                    outputs.put(this.outputIndices);
+                }
             }
         }
+        return 0;
+    }
+
+    private IntBuffer getOutputsBuffer(IntBuffer outputs) {
+        if (outputs == null)
+            return null;
+        if (outputs.isDirect())
+            return outputs;
+        if (this.outputIndices == null || this.outputIndices.capacity() < outputs.remaining())
+            this.outputIndices = BufferUtils.createIntBuffer(outputs.remaining());
+        else {
+            this.outputIndices.position(0);
+            this.outputIndices.limit(outputs.remaining());
+        }
+        return this.outputIndices;
     }
 
     @Override
@@ -160,10 +198,10 @@ public class CLNeuralNetwork implements NeuralNetwork, AutoCloseable {
                 environment.finish();
                 // copy outputs
                 if (outputs != null)
-                    this.outputs.get(outputs, batch.offset, batch.batchSize);
+                    this.outputIndices.get(outputs, batch.offset, batch.batchSize);
                 // count matched sample
                 for (int sample = 0; sample < batch.batchSize; sample++) {
-                    if (this.outputs.get(sample) == batch.getExpectedIndex(sample))
+                    if (this.outputIndices.get(sample) == batch.getExpectedIndex(sample))
                         matched++;
                 }
             }
@@ -224,14 +262,6 @@ public class CLNeuralNetwork implements NeuralNetwork, AutoCloseable {
                 activationBuffers[layer] = createMatrixBuffer(neurons, batchSize, null, BufferProperties.MEM_READ_WRITE,
                         BufferProperties.MEM_HOST_NO_ACCESS);
             }
-
-            if (outputBuffer != null)
-                outputBuffer.close();
-            outputs = BufferUtils.createIntBuffer(batchSize);
-            outputBuffer = environment.mem(batchSize * Integer.BYTES,
-                    BufferProperties.MEM_WRITE_ONLY,
-                    BufferProperties.MEM_ALLOC_HOST_PTR,
-                    BufferProperties.MEM_HOST_READ_ONLY);
         }
     }
 
@@ -287,13 +317,13 @@ public class CLNeuralNetwork implements NeuralNetwork, AutoCloseable {
             int arg = 0;
             indexerKernel.setArg(arg++, outputs());
             indexerKernel.setArg(arg++, activationBuffers[layers - 1]);
-            indexerKernel.setArg(arg++, outputBuffer);
+            indexerKernel.setArg(arg++, clOutputBuffer);
             environment.run(indexerKernel, range);
 
             // synchronize outputs memory once indexer complete
             range.reset();
             event = prepareEvent(event);
-            environment.read(outputBuffer, outputs, false, 0l, range);
+            environment.read(clOutputBuffer, outputIndices, false, 0l, range);
             return event;
         }
 

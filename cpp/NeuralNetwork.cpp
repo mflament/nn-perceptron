@@ -21,7 +21,8 @@ double sigmoid_prime(double v) {
 	return s * (1.0 - s);
 }
 
-void randomize(Matrix& m, double s) {
+void randomize(Matrix& m, int features) {
+	double s = sqrt(2.0 / features);
 	for (int c = 0; c < m.columns; c++) {
 		double* col = m.column(c);
 		for (int r = 0; r < m.rows; r++) {
@@ -84,8 +85,8 @@ public:
 	void backward(int layer, Matrix& inputs);
 	void updateNetwork(int layer, double learningRate);
 
-	void getOutputIndices(int* outputs) const;
-	int getOutputIndices(Matrix& expecteds, int* outputs) const;
+	void getOutputIndices(int* outputs, int outputsOffset) const;
+	int getOutputIndices(Matrix& expecteds, int* outputs, int outputsOffset) const;
 };
 
 NeuralNetwork::NeuralNetwork(int _layersCount, int* _layerSizes) : layersCount(_layersCount) {
@@ -129,7 +130,7 @@ void NeuralNetwork::propagate(TrainingSamples* samples, int* outputs) const {
 		batchSize = samples->inputs.slide(batchOffset, samples->batchSize);
 		trainingContext->setBatchSize(batchSize);
 		trainingContext->forward(samples->inputs);
-		trainingContext->getOutputIndices(outputs);
+		trainingContext->getOutputIndices(outputs, batchOffset);
 	}
 }
 
@@ -144,7 +145,7 @@ double NeuralNetwork::evaluate(TrainingSamples* samples, int* outputs) const {
 		batchSize = samples->slide(batchOffset, samples->batchSize);
 		trainingContext->setBatchSize(batchSize);
 		trainingContext->forward(samples->inputs);
-		matched += trainingContext->getOutputIndices(samples->expectedIndices, outputs);
+		matched += trainingContext->getOutputIndices(samples->expectedIndices, outputs, batchOffset);
 	}
 	return matched / (double)size;
 }
@@ -319,23 +320,25 @@ void TrainingContext::updateNetwork(int layer, double lr) {
 	network->bias(layer)->sub(bgrads[layer]);
 }
 
-void TrainingContext::getOutputIndices(int* outputs) const {
-	Matrix* activation = activations + network->layers() - 1;
+void TrainingContext::getOutputIndices(int* outputs, int outputsOffset) const {
+	Matrix* activation = &activations[network->layers() - 1];
 	for (int s = 0; s < batchSize; s++)
 	{
 		int index = activation->maxRowIndex(s);
-		outputs[s] = index;
+		outputs[outputsOffset + s] = index;
 	}
 }
 
-int TrainingContext::getOutputIndices(Matrix& expecteds, int* outputs) const {
-	Matrix* activation = activations + layers() - 1;
+int TrainingContext::getOutputIndices(Matrix& expecteds, int* outputs, int outputsOffset) const {
+	Matrix* activation = &activations[layers() - 1];
 	int matched = 0;
 	for (int s = 0; s < batchSize; s++)
 	{
 		int index = activation->maxRowIndex(s);
-		if (expecteds.get(0, s) == index) matched++;
-		if (outputs) outputs[s] = index;
+		if (expecteds.get(0, s) == index)
+			matched++;
+		if (outputs)
+			outputs[outputsOffset + s] = index;
 	}
 	return matched;
 }
@@ -450,3 +453,6 @@ JNIEXPORT void JNICALL Java_org_yah_tests_perceptron_jni_NativeNeuralNetwork_tra
 	network->train(samples, learningRate);
 }
 
+JNIEXPORT void JNICALL Java_org_yah_tests_perceptron_jni_NativeNeuralNetwork_seed(JNIEnv*, jclass, jlong seed) {
+	generator.seed(seed);
+}

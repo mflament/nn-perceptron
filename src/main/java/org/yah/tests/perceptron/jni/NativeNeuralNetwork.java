@@ -5,10 +5,12 @@ package org.yah.tests.perceptron.jni;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.DoubleBuffer;
 import java.nio.IntBuffer;
 
 import org.yah.tests.perceptron.InputSamples;
 import org.yah.tests.perceptron.NeuralNetwork;
+import org.yah.tests.perceptron.RandomUtils;
 import org.yah.tests.perceptron.SamplesSource;
 import org.yah.tests.perceptron.TrainingSamples;
 
@@ -22,50 +24,62 @@ public class NativeNeuralNetwork extends NativeObject implements NeuralNetwork {
         Runtime.getRuntime().loadLibrary("neuralnetwork");
     }
 
-    private final ThreadLocal<IntBuffer> outputsBuffers = new ThreadLocal<>();
+    private IntBuffer outputsBuffer;
+
+    private final int layers;
+    private final int[] layerSizes;
 
     public NativeNeuralNetwork(int... layerSizes) {
+        if (layerSizes.length < 2)
+            throw new IllegalArgumentException("Invalid layers counts " + layerSizes.length);
+        this.layerSizes = layerSizes;
+        this.layers = layerSizes.length - 1;
+        if (RandomUtils.SEED >= 0)
+            seed(RandomUtils.SEED);
         reference = create(layerSizes);
         if (reference == 0)
             throw new IllegalStateException("Error creating native neuralnetwork");
     }
 
     private IntBuffer getOutputsBuffer(int capacity) {
-        IntBuffer buffer = outputsBuffers.get();
-        if (buffer == null || buffer.capacity() < capacity) {
-            buffer = ByteBuffer.allocateDirect(capacity * Integer.BYTES)
+        if (outputsBuffer == null || outputsBuffer.capacity() < capacity) {
+            outputsBuffer = ByteBuffer.allocateDirect(capacity * Integer.BYTES)
                     .order(ByteOrder.nativeOrder()).asIntBuffer();
-            outputsBuffers.set(buffer);
         } else {
-            buffer.position(0);
-            buffer.limit(capacity);
+            outputsBuffer.position(0);
+            outputsBuffer.limit(capacity);
         }
-        return buffer;
+        return outputsBuffer;
     }
 
     @Override
     public int layers() {
-        return layers(reference);
+        return layers;
     }
 
     @Override
     public int features() {
-        return features(reference);
+        return layerSizes[0];
     }
 
     @Override
     public int outputs() {
-        return outputs(reference);
+        return layerSizes[layers];
     }
 
     @Override
     public int features(int layer) {
-        return features(reference, layer);
+        return layerSizes[layer];
     }
 
     @Override
     public int neurons(int layer) {
-        return neurons(reference, layer);
+        return layerSizes[layer + 1];
+    }
+
+    @Override
+    public void snapshot(int layer, DoubleBuffer buffer) {
+        throw new UnsupportedOperationException();
     }
 
     @Override
@@ -89,19 +103,36 @@ public class NativeNeuralNetwork extends NativeObject implements NeuralNetwork {
 
     @Override
     public void propagate(InputSamples samples, int[] outputs) {
+        propagate(samples, IntBuffer.wrap(outputs));
+    }
+
+    @Override
+    public void propagate(InputSamples samples, IntBuffer outputs) {
         NativeTrainingSamples nativeSamples = (NativeTrainingSamples) samples;
-        IntBuffer outputsBuffer = getOutputsBuffer(outputs.length);
-        propagate(reference, nativeSamples.reference, outputsBuffer);
-        outputsBuffer.get(outputs);
+        IntBuffer buffer = outputs.isDirect() ? outputs : getOutputsBuffer(samples.size());
+        propagate(reference, nativeSamples.reference, buffer);
+        if (buffer != outputs) {
+            outputs.put(buffer);
+            outputs.flip();
+        }
     }
 
     @Override
     public double evaluate(TrainingSamples samples, int[] outputs) {
+        return evaluate(samples, outputs != null ? IntBuffer.wrap(outputs) : null);
+    }
+
+    @Override
+    public double evaluate(TrainingSamples samples, IntBuffer outputs) {
         NativeTrainingSamples nativeSamples = (NativeTrainingSamples) samples;
-        IntBuffer outputsBuffer = outputs != null ? getOutputsBuffer(outputs.length) : null;
-        double accuracy = evaluate(reference, nativeSamples.reference, outputsBuffer);
-        if (outputsBuffer != null)
-            outputsBuffer.get(outputs);
+        IntBuffer buffer = null;
+        if (outputs != null)
+            buffer = outputs.isDirect() ? outputs : getOutputsBuffer(samples.size());
+        double accuracy = evaluate(reference, nativeSamples.reference, buffer);
+        if (buffer != outputs) {
+            outputs.put(buffer);
+            outputs.flip();
+        }
         return accuracy;
     }
 
@@ -134,4 +165,7 @@ public class NativeNeuralNetwork extends NativeObject implements NeuralNetwork {
 
     private static native void train(long networkReference, long samplesReference,
             double learningRate);
+
+    private static native void seed(long seed);
+
 }

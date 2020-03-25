@@ -87,6 +87,14 @@ JNIEXPORT jdouble JNICALL Java_org_yah_tests_perceptron_jni_NativeNeuralNetwork_
 JNIEXPORT void JNICALL Java_org_yah_tests_perceptron_jni_NativeNeuralNetwork_train
   (JNIEnv *, jclass, jlong, jlong, jdouble);
 
+/*
+ * Class:     org_yah_tests_perceptron_jni_NativeNeuralNetwork
+ * Method:    seed
+ * Signature: (J)V
+ */
+JNIEXPORT void JNICALL Java_org_yah_tests_perceptron_jni_NativeNeuralNetwork_seed
+  (JNIEnv *, jclass, jlong);
+
 #ifdef __cplusplus
 }
 #endif

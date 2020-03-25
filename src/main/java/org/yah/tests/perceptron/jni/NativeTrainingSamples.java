@@ -5,10 +5,15 @@ import java.nio.Buffer;
 import org.yah.tests.perceptron.TrainingSamples;
 
 class NativeTrainingSamples extends NativeObject implements TrainingSamples {
+
+    private final int size;
+    private final int batchSize;
     private Buffer inputsMatrix, outputsMatrix, outputIndices;
 
-    public NativeTrainingSamples(int batchSize, Buffer inputsMatrix, Buffer outputsMatrix,
+    public NativeTrainingSamples(int size, int batchSize, Buffer inputsMatrix, Buffer outputsMatrix,
             Buffer outputIndices) {
+        this.size = size;
+        this.batchSize = batchSize == 0 ? size : batchSize;
         this.inputsMatrix = inputsMatrix;
         this.outputsMatrix = outputsMatrix;
         this.outputIndices = outputIndices;
@@ -27,12 +32,12 @@ class NativeTrainingSamples extends NativeObject implements TrainingSamples {
 
     @Override
     public int size() {
-        return size(reference);
+        return size;
     }
 
     @Override
     public int batchSize() {
-        return batchSize(reference);
+        return batchSize;
     }
 
     private static native long create(int batchSize, Buffer inputsMatrix,

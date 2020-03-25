@@ -8,8 +8,6 @@ public final class SamplesProviders {
 
         int samples();
 
-        int features();
-
         double input(int sample, int feature);
     }
 
@@ -19,7 +17,6 @@ public final class SamplesProviders {
 
     private static abstract class AbstractArraySamplesProvider implements TrainingSamplesProvider {
         protected final int samples;
-        protected final int features;
         protected final double[][] inputs;
         protected final int[] outputIndices;
 
@@ -29,10 +26,8 @@ public final class SamplesProviders {
          * @param outputIndices null or int[samples]
          * @param transpose     transpose input from row major to column major
          */
-        protected AbstractArraySamplesProvider(int samples, int features, double[][] inputs,
-                int[] outputIndices) {
+        protected AbstractArraySamplesProvider(int samples, double[][] inputs, int[] outputIndices) {
             this.samples = samples;
-            this.features = features;
             this.inputs = inputs;
             this.outputIndices = outputIndices;
         }
@@ -41,12 +36,6 @@ public final class SamplesProviders {
         public int samples() {
             return samples;
         }
-
-        @Override
-        public int features() {
-            return features;
-        }
-
         @Override
         public int outputIndex(int sample) {
             return outputIndices[sample];
@@ -56,7 +45,7 @@ public final class SamplesProviders {
     private static class CMArraySamplesProvider extends AbstractArraySamplesProvider {
 
         public CMArraySamplesProvider(double[][] inputs, int[] outputIndices) {
-            super(inputs.length, inputs.length == 0 ? 0 : inputs[0].length, inputs, outputIndices);
+            super(inputs.length, inputs, outputIndices);
         }
 
         @Override
@@ -68,7 +57,7 @@ public final class SamplesProviders {
     private static class RMArraySamplesProvider extends AbstractArraySamplesProvider {
 
         public RMArraySamplesProvider(double[][] inputs, int[] outputIndices) {
-            super(inputs.length == 0 ? 0 : inputs[0].length, inputs.length, inputs, outputIndices);
+            super(inputs[0].length, inputs, outputIndices);
         }
 
         @Override

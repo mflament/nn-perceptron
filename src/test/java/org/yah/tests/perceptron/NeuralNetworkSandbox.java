@@ -4,6 +4,7 @@ import org.yah.tests.perceptron.SamplesProviders.TrainingSamplesProvider;
 import org.yah.tests.perceptron.jni.NativeNeuralNetwork;
 import org.yah.tests.perceptron.matrix.MatrixNeuralNetwork;
 import org.yah.tests.perceptron.matrix.array.CMArrayMatrix;
+import org.yah.tests.perceptron.mt.MTNeuralNetwork;
 import org.yah.tests.perceptron.opencl.CLNeuralNetwork;
 
 public class NeuralNetworkSandbox implements AutoCloseable {
@@ -50,14 +51,14 @@ public class NeuralNetworkSandbox implements AutoCloseable {
                 outputIndices);
         TrainingSamples samples = null;
         try {
-            samples = samplesSource.createTraining(provider, 0);
+            samples = samplesSource.createTraining(provider, 2);
             long start = System.nanoTime();
-            double last = network.evaluate(samples, null);
+            double last = network.evaluate(samples);
             System.out.println(last);
             int count = 0;
             while (true) {
                 network.train(samples, 0.1f);
-                double s = network.evaluate(samples, null);
+                double s = network.evaluate(samples);
                 if (s != last) {
                     System.out.println(s);
                     last = s;
@@ -65,7 +66,7 @@ public class NeuralNetworkSandbox implements AutoCloseable {
                 count++;
                 double elapsed = (System.nanoTime() - start) * NS_MS;
                 if (elapsed > LOG_INTERVAL) {
-                    double score = network.evaluate(samples, null);
+                    double score = network.evaluate(samples);
                     System.out.println(
                             String.format("score: %.2f b/ms: %.3f", score, count / elapsed));
                     count = 0;
@@ -93,6 +94,9 @@ public class NeuralNetworkSandbox implements AutoCloseable {
                 break;
             case "cl":
                 network = new CLNeuralNetwork(layers);
+                break;
+            case "mt":
+                network = new MTNeuralNetwork(layers);
                 break;
             case "matrix":
                 network = new MatrixNeuralNetwork<>(CMArrayMatrix::new, layers);

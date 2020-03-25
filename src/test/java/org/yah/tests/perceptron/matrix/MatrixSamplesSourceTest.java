@@ -46,7 +46,7 @@ public class MatrixSamplesSourceTest {
             assertTrue(iter.hasNext());
             MatrixBatch<?> batch = iter.next();
 
-            assertEquals(2, batch.size());
+            assertEquals(2, batch.batchSize());
             assertMatrix(new double[][] { { 1, 2 }, { 3, 4 } }, batch.inputs());
             assertMatrix(new double[][] { { 1, 0, 0 }, { 0, 0, 1 } }, batch.expectedOutputs());
             assertMatrix(new double[][] { { 0 }, { 2 } }, batch.expectedIndices());
@@ -54,7 +54,7 @@ public class MatrixSamplesSourceTest {
             assertTrue(iter.hasNext());
             batch = iter.next();
 
-            assertEquals(1, batch.size());
+            assertEquals(1, batch.batchSize());
             assertMatrix(new double[][] { { 5, 6 } }, batch.inputs());
             assertMatrix(new double[][] { { 0, 1, 0 } }, batch.expectedOutputs());
             assertMatrix(new double[][] { { 1 } }, batch.expectedIndices());

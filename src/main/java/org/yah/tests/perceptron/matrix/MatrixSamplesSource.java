@@ -42,12 +42,7 @@ public class MatrixSamplesSource<M extends Matrix<M>> implements SamplesSource {
     }
 
     private M createInputs(SamplesProvider provider) {
-        if (provider.features() != network.features()) {
-            throw new IllegalArgumentException(
-                    "Invalid inputs features: " + provider.features() + ", expected "
-                            + network.features());
-        }
-        M res = network.newMatrix(provider.features(), provider.samples());
+        M res = network.newMatrix(network.features(), provider.samples());
         res.apply((r, c, v) -> provider.input(c, r));
         return res;
     }
@@ -182,22 +177,18 @@ public class MatrixSamplesSource<M extends Matrix<M>> implements SamplesSource {
             return newSize;
         }
 
-        public int size() {
+        public int batchSize() {
             return inputs.columns();
         }
 
-        public double accuracy(M outputs, int[] outputIndices) {
+        public int countMatchedOutputs(int[] actualOutputs) {
             int matched = 0;
-            int samples = outputs.columns();
-            assert samples == expectedIndices.columns();
+            int samples = batchSize();
             for (int sample = 0; sample < samples; sample++) {
-                int outputIndex = outputs.maxRowIndex(sample);
-                if (expectedIndices.get(0, sample) == outputIndex)
+                if (expectedIndices.get(0, sample) == actualOutputs[sample])
                     matched++;
-                if (outputIndices != null)
-                    outputIndices[sample] = outputIndex;
             }
-            return matched / (double) samples;
+            return matched;
         }
 
         public M inputs() {

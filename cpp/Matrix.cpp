@@ -43,14 +43,11 @@ void Matrix::mul(double s) {
 }
 
 int Matrix::maxRowIndex(int c) {
-	int res = -1;
-	double max = -DBL_MAX;
+	int res = 0;
 	double* col = column(c);
-	for (int r = 0; r < rows; r++) {
-		if (col[r] > max) {
-			max = col[r];
+	for (int r = 1; r < rows; r++) {
+		if (col[r] > col[res])
 			res = r;
-		}
 	}
 	return res;
 }

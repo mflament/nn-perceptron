@@ -9,7 +9,7 @@ struct TrainingSamples {
 	Matrix expectedIndices;
 	
 	inline int size() {
-		return inputs.columns;
+		return inputs.capacity;
 	}
 
 	int slide(int offset, int columns);

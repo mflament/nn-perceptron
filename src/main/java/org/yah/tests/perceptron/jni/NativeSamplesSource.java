@@ -18,7 +18,7 @@ class NativeSamplesSource implements SamplesSource {
     @Override
     public NativeTrainingSamples createInputs(SamplesProvider provider, int batchSize) {
         ByteBuffer inputsBuffer = createInputs(provider);
-        return new NativeTrainingSamples(batchSize, inputsBuffer, null, null);
+        return new NativeTrainingSamples(provider.samples(), batchSize, inputsBuffer, null, null);
     }
 
     @Override
@@ -27,16 +27,11 @@ class NativeSamplesSource implements SamplesSource {
         checkExpecteds(provider);
         ByteBuffer outputsMatrix = createOutputs(provider);
         ByteBuffer expectedIndices = createExpectedIndices(provider);
-        return new NativeTrainingSamples(batchSize, inputsBuffer, outputsMatrix, expectedIndices);
+        return new NativeTrainingSamples(provider.samples(), batchSize, inputsBuffer, outputsMatrix, expectedIndices);
     }
 
     private ByteBuffer createInputs(SamplesProvider provider) {
-        if (provider.features() != network.features()) {
-            throw new IllegalArgumentException(
-                    "Invalid inputs features: " + provider.features() + ", expected "
-                            + network.features());
-        }
-        return NativeMatrix.create(provider.features(), provider.samples(),
+        return NativeMatrix.create(network.features(), provider.samples(),
                 (r, c, v) -> provider.input(c, r));
     }
 
