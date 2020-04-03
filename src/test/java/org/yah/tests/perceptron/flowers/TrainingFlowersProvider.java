@@ -1,6 +1,3 @@
-/**
- * 
- */
 package org.yah.tests.perceptron.flowers;
 
 import java.util.Random;
@@ -45,7 +42,7 @@ class TrainingFlowersProvider implements TrainingSamplesProvider {
             flowers[i] = i;
         for (int i = 0; i < total; i++)
             swap(flowers, i, random.nextInt(flowers.length));
-        int res[] = new int[count];
+        int[] res = new int[count];
         System.arraycopy(flowers, 0, res, 0, count);
         return res;
     }

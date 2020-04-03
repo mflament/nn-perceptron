@@ -1,6 +1,3 @@
-/**
- * 
- */
 package org.yah.tests.perceptron.matrix;
 
 import java.util.Iterator;
@@ -119,12 +116,7 @@ public class MatrixSamplesSource<M extends Matrix<M>> implements SamplesSource {
 
         private final MatrixSamples<M> samples;
 
-        private final ThreadLocal<MatrixBatch<M>> batches = new ThreadLocal<MatrixBatch<M>>() {
-            @Override
-            protected MatrixBatch<M> initialValue() {
-                return newBatch();
-            }
-        };
+        private final ThreadLocal<MatrixBatch<M>> batches = ThreadLocal.withInitial(this::newBatch);
 
         private int offset;
 
@@ -168,8 +160,8 @@ public class MatrixSamplesSource<M extends Matrix<M>> implements SamplesSource {
 
         public int slide(int offset, int columns) {
             int newSize = inputs.slide(offset, columns);
-            int s = expectedOutputs.slide(offset, columns);
             if (expectedOutputs != null) {
+                int s = expectedOutputs.slide(offset, columns);
                 assert s == newSize;
                 s = expectedIndices.slide(offset, columns);
                 assert s == newSize;

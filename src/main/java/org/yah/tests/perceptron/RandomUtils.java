@@ -21,7 +21,7 @@ public final class RandomUtils {
         if (prop != null) {
             try {
                 seed = Long.parseLong(prop);
-            } catch (NumberFormatException e) {}
+            } catch (NumberFormatException ignored) {}
         }
         return seed;
     }

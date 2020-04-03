@@ -24,7 +24,6 @@ public final class SamplesProviders {
          * @param inputs        if !transpose : column major samples, else row major
          *                      samples
          * @param outputIndices null or int[samples]
-         * @param transpose     transpose input from row major to column major
          */
         protected AbstractArraySamplesProvider(int samples, double[][] inputs, int[] outputIndices) {
             this.samples = samples;

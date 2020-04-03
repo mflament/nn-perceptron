@@ -1,6 +1,3 @@
-/**
- * 
- */
 package org.yah.tests.perceptron.opencl;
 
 import java.io.IOException;
@@ -26,7 +23,7 @@ public class CLNeuralNetworkTest extends AbstractNeuralNetworkTest<CLNeuralNetwo
     private CLContext context;
 
     @Before
-    public void setup() throws IOException {
+    public void setup() {
         context = CLContext.createDefault((msg, data) -> System.out.println(msg));
     }
 

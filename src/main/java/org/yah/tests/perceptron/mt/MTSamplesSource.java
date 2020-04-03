@@ -1,6 +1,3 @@
-/**
- * 
- */
 package org.yah.tests.perceptron.mt;
 
 import java.util.Iterator;

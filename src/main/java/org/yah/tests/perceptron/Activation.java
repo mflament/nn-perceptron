@@ -11,8 +11,10 @@ public class Activation {
         return s * (1.0 - s);
     }
 
+    /** @noinspection unused*/
     public static double exp(double val) {
         final long tmp = (long) (1512775 * val + (1072693248 - 60801));
         return Double.longBitsToDouble(tmp << 32);
     }
+    
 }

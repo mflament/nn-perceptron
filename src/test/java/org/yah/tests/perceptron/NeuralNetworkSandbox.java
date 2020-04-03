@@ -30,47 +30,63 @@ public class NeuralNetworkSandbox implements AutoCloseable {
             ((AutoCloseable) network).close();
     }
 
-    public void runXOR() throws InterruptedException {
+    public void runXOR() {
         run(new double[][] { { 0, 0 }, { 0, 1 }, { 1, 0 }, { 1, 1 } }, new int[] { 0, 1, 1, 0 });
     }
 
-    public void runNAND() throws InterruptedException {
+    public void runNAND() {
         run(new double[][] { { 0, 0 }, { 0, 1 }, { 1, 0 }, { 1, 1 } }, new int[] { 1, 1, 1, 0 });
     }
 
-    public void runAND() throws InterruptedException {
+    public void runAND() {
         run(new double[][] { { 0, 0 }, { 0, 1 }, { 1, 0 }, { 1, 1 } }, new int[] { 0, 0, 0, 1 });
     }
 
-    public void runOR() throws InterruptedException {
+    public void runOR() {
         run(new double[][] { { 0, 0 }, { 0, 1 }, { 1, 0 }, { 1, 1 } }, new int[] { 0, 1, 1, 1 });
     }
 
-    public void run(double[][] inputs, int[] outputIndices) throws InterruptedException {
+    public void runSingle() {
+        run(new double[][] { { 0, 1 } }, new int[] { 1 });
+    }
+
+    /** @noinspection InfiniteLoopStatement*/
+    public void run(double[][] inputs, int[] outputIndices) {
         TrainingSamplesProvider provider = SamplesProviders.newTrainingProvider(inputs, false,
                 outputIndices);
         TrainingSamples samples = null;
         try {
-            samples = samplesSource.createTraining(provider, 2);
-            long start = System.nanoTime();
+            samples = samplesSource.createTraining(provider, 0);
             double last = network.evaluate(samples);
-            System.out.println(last);
+            long trainingTime = 0;
+            long evaluationTime = 0;
+            System.out.println("score: " + last);
             int count = 0;
+            long lastLog = System.nanoTime();
             while (true) {
+                long start = System.nanoTime();
                 network.train(samples, 0.1f);
+                trainingTime += System.nanoTime() - start;
+
+                start = System.nanoTime();
                 double s = network.evaluate(samples);
+                evaluationTime += System.nanoTime() - start;
                 if (s != last) {
                     System.out.println(s);
                     last = s;
                 }
                 count++;
-                double elapsed = (System.nanoTime() - start) * NS_MS;
+                double elapsed = (System.nanoTime() - lastLog) * NS_MS;
                 if (elapsed > LOG_INTERVAL) {
                     double score = network.evaluate(samples);
+                    double trainingMs = (trainingTime / (double) count) * NS_MS;
+                    double evaluationMs = (evaluationTime / (double) count) * NS_MS;
                     System.out.println(
-                            String.format("score: %.2f b/ms: %.3f", score, count / elapsed));
+                            String.format("score: %.2f training: %.3fms; evaluation: %.3fms", score, trainingMs,
+                                    evaluationMs));
                     count = 0;
-                    start = System.nanoTime();
+                    trainingTime = evaluationTime = 0;
+                    lastLog = System.nanoTime();
                 }
             }
         } finally {
@@ -107,6 +123,7 @@ public class NeuralNetworkSandbox implements AutoCloseable {
 
         try (NeuralNetworkSandbox sb = new NeuralNetworkSandbox(network)) {
             sb.runNAND();
+            // sb.runSingle();
         }
     }
 }

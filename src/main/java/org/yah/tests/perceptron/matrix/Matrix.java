@@ -3,7 +3,7 @@ package org.yah.tests.perceptron.matrix;
 public interface Matrix<M extends Matrix<M>> {
 
     @FunctionalInterface
-    public interface MatrixFunction {
+    interface MatrixFunction {
         double apply(int row, int column, double value);
     }
 
@@ -19,17 +19,17 @@ public interface Matrix<M extends Matrix<M>> {
 
     void zero();
 
-    default M sub(M b) {
-        return sub(b, self());
+    default void sub(M b) {
+        sub(b, self());
     }
 
-    M sub(M b, M target);
+    void sub(M b, M target);
 
-    default M mul(M b) {
-        return mul(b, self());
+    default void mul(M b) {
+        mul(b, self());
     }
 
-    M mul(M b, M target);
+    void mul(M b, M target);
 
     default M mul(double s) {
         return mul(s, self());
@@ -37,10 +37,10 @@ public interface Matrix<M extends Matrix<M>> {
 
     M mul(double s, M target);
 
-    M addColumnVector(M vector, M target);
+    void addColumnVector(M vector, M target);
 
-    default M addColumnVector(M vector) {
-        return addColumnVector(vector, self());
+    default void addColumnVector(M vector) {
+        addColumnVector(vector, self());
     }
 
     M dot(M b);
@@ -50,6 +50,7 @@ public interface Matrix<M extends Matrix<M>> {
      * 
      * @param b
      * @param target
+     * @noinspection JavaDoc
      */
     M dot(M b, M target);
 
@@ -60,6 +61,7 @@ public interface Matrix<M extends Matrix<M>> {
      * 
      * @param b
      * @param target
+     * @noinspection JavaDoc
      */
     M transpose_dot(M b, M target);
 
@@ -68,6 +70,7 @@ public interface Matrix<M extends Matrix<M>> {
      * 
      * @param b
      * @param target
+     * @noinspection JavaDoc
      */
     M dot_transpose(M b, M target);
 
@@ -79,10 +82,10 @@ public interface Matrix<M extends Matrix<M>> {
         return sigmoid(self());
     }
 
-    M sigmoid_prime(M target);
+    void sigmoid_prime(M target);
 
-    default M sigmoid_prime() {
-        return sigmoid_prime(self());
+    default void sigmoid_prime() {
+        sigmoid_prime(self());
     }
 
     int maxRowIndex(int column);
@@ -92,7 +95,7 @@ public interface Matrix<M extends Matrix<M>> {
 
     M createView();
 
-    M sumRows(M target);
+    void sumRows(M target);
 
     static String toString(Matrix<?> matrix) {
         StringBuilder sb = new StringBuilder();

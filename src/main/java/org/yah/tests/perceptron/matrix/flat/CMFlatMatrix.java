@@ -1,6 +1,3 @@
-/**
- * 
- */
 package org.yah.tests.perceptron.matrix.flat;
 
 import java.util.Arrays;
@@ -19,7 +16,6 @@ public class CMFlatMatrix implements Matrix<CMFlatMatrix> {
     private int colOffset, columns;
 
     /**
-     * @param data column major data (needs a standard ...)
      */
     public CMFlatMatrix(double[][] _data) {
         this.totalColumns = _data.length;
@@ -45,6 +41,7 @@ public class CMFlatMatrix implements Matrix<CMFlatMatrix> {
         this.columns = totalColumns;
         this.rows = from.rows;
         this.data = from.data;
+        this.colOffset = 0;
     }
 
     @Override
@@ -84,7 +81,7 @@ public class CMFlatMatrix implements Matrix<CMFlatMatrix> {
     }
 
     @Override
-    public CMFlatMatrix sub(CMFlatMatrix b, CMFlatMatrix target) {
+    public void sub(CMFlatMatrix b, CMFlatMatrix target) {
         for (int c = 0; c < columns; c++) {
             int ci = indexOf(c);
             int bci = b.indexOf(c);
@@ -93,11 +90,10 @@ public class CMFlatMatrix implements Matrix<CMFlatMatrix> {
                 target.data[tci + r] = data[ci + r] - b.data[bci + r];
             }
         }
-        return target;
     }
 
     @Override
-    public CMFlatMatrix mul(CMFlatMatrix b, CMFlatMatrix target) {
+    public void mul(CMFlatMatrix b, CMFlatMatrix target) {
         for (int c = 0; c < columns; c++) {
             int ci = indexOf(c);
             int bci = b.indexOf(c);
@@ -106,7 +102,6 @@ public class CMFlatMatrix implements Matrix<CMFlatMatrix> {
                 target.data[tci + r] = data[ci + r] * b.data[bci + r];
             }
         }
-        return target;
     }
 
     @Override
@@ -122,7 +117,7 @@ public class CMFlatMatrix implements Matrix<CMFlatMatrix> {
     }
 
     @Override
-    public CMFlatMatrix addColumnVector(CMFlatMatrix vector, CMFlatMatrix target) {
+    public void addColumnVector(CMFlatMatrix vector, CMFlatMatrix target) {
         assert vector.columns == 1;
         assert vector.rows() == rows;
 
@@ -134,11 +129,10 @@ public class CMFlatMatrix implements Matrix<CMFlatMatrix> {
                 target.data[tci + r] = data[ci + r] + vector.data[vi + r];
             }
         }
-        return target;
     }
 
     @Override
-    public CMFlatMatrix sumRows(CMFlatMatrix target) {
+    public void sumRows(CMFlatMatrix target) {
         assert target.rows == rows;
         assert target.columns == 1;
         for (int r = 0; r < rows; r++) {
@@ -148,7 +142,6 @@ public class CMFlatMatrix implements Matrix<CMFlatMatrix> {
             }
             target.data[target.indexOf(0) + r] = s;
         }
-        return target;
     }
 
     @Override
@@ -232,14 +225,13 @@ public class CMFlatMatrix implements Matrix<CMFlatMatrix> {
     }
 
     @Override
-    public CMFlatMatrix sigmoid_prime(CMFlatMatrix target) {
+    public void sigmoid_prime(CMFlatMatrix target) {
         int ci = indexOf(colOffset);
         int tci = target.indexOf(target.colOffset);
         int count = rows * columns;
         for (int i = 0; i < count; i++) {
             target.data[tci + i] = Activation.sigmoid_prime(data[ci + i]);
         }
-        return target;
     }
 
     @Override

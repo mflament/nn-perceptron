@@ -1,6 +1,3 @@
-/**
- * 
- */
 package org.yah.tests.perceptron.jni;
 
 import java.nio.ByteBuffer;

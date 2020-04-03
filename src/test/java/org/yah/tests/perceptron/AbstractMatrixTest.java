@@ -18,7 +18,7 @@ public abstract class AbstractMatrixTest<M extends Matrix<M>> {
 
     protected static final double[][] VALUES = { { 1, 4 }, { 2, 5 }, { 3, 6 } };
 
-    protected Random random = new Random(12345);
+    protected final Random random = new Random(12345);
 
     @Before
     public void setup() {
@@ -187,9 +187,8 @@ public abstract class AbstractMatrixTest<M extends Matrix<M>> {
         assertMatrix(new double[][] { { 11, 24 }, { 12, 25 }, { 13, 26 } }, result);
     }
 
-    protected M randomMatrix(M matrix) {
+    protected void randomMatrix(M matrix) {
         matrix.apply((r, c, v) -> random.nextGaussian());
-        return matrix;
     }
 
     protected M transpose(M matrix) {

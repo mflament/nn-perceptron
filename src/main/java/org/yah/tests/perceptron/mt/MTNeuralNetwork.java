@@ -1,6 +1,3 @@
-/**
- * 
- */
 package org.yah.tests.perceptron.mt;
 
 import java.nio.DoubleBuffer;
@@ -42,14 +39,14 @@ public class MTNeuralNetwork implements NeuralNetwork, AutoCloseable {
 
     private int[] batchOutputs;
 
-    private ForwardHandler forwardHandler = new ForwardHandler();
-    private CostDerivativeHandler costHandler = new CostDerivativeHandler();
-    private OutputsIndexer outputsIndexer = new OutputsIndexer();
-    private SigmoidPrimeHandler sigmoidPrimeHandler = new SigmoidPrimeHandler();
-    private DotHandler dotHandler = new DotHandler();
-    private ModelUpdateHandler modelUpdateHandler = new ModelUpdateHandler();
+    private final ForwardHandler forwardHandler = new ForwardHandler();
+    private final CostDerivativeHandler costHandler = new CostDerivativeHandler();
+    private final OutputsIndexer outputsIndexer = new OutputsIndexer();
+    private final SigmoidPrimeHandler sigmoidPrimeHandler = new SigmoidPrimeHandler();
+    private final DotHandler dotHandler = new DotHandler();
+    private final ModelUpdateHandler modelUpdateHandler = new ModelUpdateHandler();
 
-    private MTMatrix transposed = new MTMatrix();
+    private final MTMatrix transposed = new MTMatrix();
 
     public MTNeuralNetwork(int... layerSizes) {
         if (layerSizes.length < 2)
@@ -142,9 +139,7 @@ public class MTNeuralNetwork implements NeuralNetwork, AutoCloseable {
         assert outputIndices.length == samples.size();
 
         MTTrainingSamples mtsamples = (MTTrainingSamples) samples;
-        Iterator<MTBatch> batchIter = mtsamples.iterator();
-        while (batchIter.hasNext()) {
-            MTBatch batch = batchIter.next();
+        for (MTBatch batch : mtsamples) {
             forward(batch);
             indexOutputs(null, outputIndices, batch.offset());
         }
@@ -153,9 +148,7 @@ public class MTNeuralNetwork implements NeuralNetwork, AutoCloseable {
     @Override
     public void propagate(InputSamples samples, IntBuffer outputIndices) {
         MTTrainingSamples mtsamples = (MTTrainingSamples) samples;
-        Iterator<MTBatch> batchIter = mtsamples.iterator();
-        while (batchIter.hasNext()) {
-            MTBatch batch = batchIter.next();
+        for (MTBatch batch : mtsamples) {
             forward(batch);
             prepareBatchOutputs(batch.batchSize());
             indexOutputs(batch, batchOutputs, 0);
@@ -204,9 +197,7 @@ public class MTNeuralNetwork implements NeuralNetwork, AutoCloseable {
     @Override
     public void train(TrainingSamples samples, double learningRate) {
         MTTrainingSamples mtsamples = (MTTrainingSamples) samples;
-        Iterator<MTBatch> batchIter = mtsamples.iterator();
-        while (batchIter.hasNext()) {
-            MTBatch batch = batchIter.next();
+        for (MTBatch batch : mtsamples) {
             // forward propagation
             forward(batch);
 
@@ -263,13 +254,12 @@ public class MTNeuralNetwork implements NeuralNetwork, AutoCloseable {
     }
 
     private int maxNeurons() {
-        return Arrays.stream(layerSizes, 1, layers).max().getAsInt();
+        return Arrays.stream(layerSizes, 1, layers).max().orElse(0);
     }
 
-    private int[] prepareBatchOutputs(int batchSize) {
+    private void prepareBatchOutputs(int batchSize) {
         if (batchOutputs == null || batchOutputs.length < batchSize)
             batchOutputs = new int[batchSize];
-        return batchOutputs;
     }
 
     private static abstract class MatrixHandler implements ChunkHandler {
@@ -357,8 +347,8 @@ public class MTNeuralNetwork implements NeuralNetwork, AutoCloseable {
         @Override
         public void complete() {
             matched = 0;
-            for (int i = 0; i < matcheds.length; i++) {
-                matched += matcheds[i];
+            for (int value : matcheds) {
+                matched += value;
             }
         }
     }
@@ -377,7 +367,7 @@ public class MTNeuralNetwork implements NeuralNetwork, AutoCloseable {
         }
     }
 
-    private class DotHandler extends MatrixHandler {
+    private static class DotHandler extends MatrixHandler {
         private MTMatrix a, b, res;
 
         public void prepare(MTMatrix a, MTMatrix b, MTMatrix res) {
@@ -412,9 +402,9 @@ public class MTNeuralNetwork implements NeuralNetwork, AutoCloseable {
                     chunkBgrads[i] = new MTMatrix(maxNeurons(), 1);
                 }
             }
-            for (int i = 0; i < chunkBgrads.length; i++) {
-                chunkBgrads[i].reshape(bgrad.rows(), 1);
-                chunkBgrads[i].zero();
+            for (MTMatrix chunkBgrad : chunkBgrads) {
+                chunkBgrad.reshape(bgrad.rows(), 1);
+                chunkBgrad.zero();
             }
         }
 
@@ -444,8 +434,8 @@ public class MTNeuralNetwork implements NeuralNetwork, AutoCloseable {
             // sum chunk grads to layer bgrads
             for (int r = 0; r < rows; r++) {
                 double s = 0;
-                for (int i = 0; i < chunkBgrads.length; i++) {
-                    s += chunkBgrads[i].get(r);
+                for (MTMatrix chunkBgrad : chunkBgrads) {
+                    s += chunkBgrad.get(r);
                 }
                 bgrad.set(r, s);
             }

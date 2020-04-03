@@ -1,6 +1,3 @@
-/**
- * 
- */
 package org.yah.tests.perceptron.matrix.array;
 
 import java.util.Arrays;
@@ -14,7 +11,7 @@ import org.yah.tests.perceptron.matrix.Matrix;
  */
 public class RMArrayMatrix implements Matrix<RMArrayMatrix> {
 
-    private double[][] data; // [rows][col]
+    private final double[][] data; // [rows][col]
 
     private int colOffset;
     private int columns;
@@ -25,7 +22,6 @@ public class RMArrayMatrix implements Matrix<RMArrayMatrix> {
     }
 
     /**
-     * @param data column major data (needs a standard ...)
      */
     public RMArrayMatrix(double[][] _data) {
         int rows = _data[0].length;
@@ -43,6 +39,7 @@ public class RMArrayMatrix implements Matrix<RMArrayMatrix> {
     public RMArrayMatrix(RMArrayMatrix from) {
         this.data = from.data;
         this.columns = this.data[0].length;
+        this.colOffset = 0;
     }
 
     @Override
@@ -85,13 +82,13 @@ public class RMArrayMatrix implements Matrix<RMArrayMatrix> {
     @Override
     public void zero() {
         int lastCol = colOffset + columns;
-        for (int r = 0; r < data.length; r++) {
-            Arrays.fill(data[r], colOffset, lastCol, 0);
+        for (double[] datum : data) {
+            Arrays.fill(datum, colOffset, lastCol, 0);
         }
     }
 
     @Override
-    public RMArrayMatrix sub(RMArrayMatrix b, RMArrayMatrix target) {
+    public void sub(RMArrayMatrix b, RMArrayMatrix target) {
         for (int r = 0; r < data.length; r++) {
             double[] arow = data[r];
             double[] brow = b.data[r];
@@ -100,11 +97,10 @@ public class RMArrayMatrix implements Matrix<RMArrayMatrix> {
                 trow[col + target.colOffset] = arow[col + colOffset] - brow[col + b.colOffset];
             }
         }
-        return target;
     }
 
     @Override
-    public RMArrayMatrix mul(RMArrayMatrix b, RMArrayMatrix target) {
+    public void mul(RMArrayMatrix b, RMArrayMatrix target) {
         for (int r = 0; r < data.length; r++) {
             double[] arow = data[r];
             double[] brow = b.data[r];
@@ -113,7 +109,6 @@ public class RMArrayMatrix implements Matrix<RMArrayMatrix> {
                 trow[col + target.colOffset] = arow[col + colOffset] * brow[col + b.colOffset];
             }
         }
-        return target;
     }
 
     @Override
@@ -206,7 +201,7 @@ public class RMArrayMatrix implements Matrix<RMArrayMatrix> {
     }
 
     @Override
-    public RMArrayMatrix addColumnVector(RMArrayMatrix vector, RMArrayMatrix target) {
+    public void addColumnVector(RMArrayMatrix vector, RMArrayMatrix target) {
         int rows = rows();
         assert vector.columns == 1;
         assert vector.rows() == rows;
@@ -219,7 +214,6 @@ public class RMArrayMatrix implements Matrix<RMArrayMatrix> {
                 trow[col + target.colOffset] = row[col + colOffset] + v;
             }
         }
-        return target;
     }
 
     @Override
@@ -237,7 +231,7 @@ public class RMArrayMatrix implements Matrix<RMArrayMatrix> {
     }
 
     @Override
-    public RMArrayMatrix sigmoid_prime(RMArrayMatrix target) {
+    public void sigmoid_prime(RMArrayMatrix target) {
         int rows = rows();
         assert target.columns == columns;
         assert target.rows() == rows;
@@ -248,11 +242,10 @@ public class RMArrayMatrix implements Matrix<RMArrayMatrix> {
                 trow[c + target.colOffset] = Activation.sigmoid_prime(row[c + colOffset]);
             }
         }
-        return target;
     }
 
     @Override
-    public RMArrayMatrix sumRows(RMArrayMatrix target) {
+    public void sumRows(RMArrayMatrix target) {
         int rows = rows();
         assert target.rows() == rows;
         assert target.columns == 1;
@@ -265,7 +258,6 @@ public class RMArrayMatrix implements Matrix<RMArrayMatrix> {
             }
             trow[target.colOffset] = v;
         }
-        return target;
     }
 
     @Override

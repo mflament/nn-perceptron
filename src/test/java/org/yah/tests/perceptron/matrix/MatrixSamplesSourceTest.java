@@ -24,15 +24,14 @@ public class MatrixSamplesSourceTest {
     private static final double[][] EXPECTED_OUTPUTS = { { 1, 0, 0 }, { 0, 0, 1 }, { 0, 1, 0 } };
     private static final double[][] EXPECTED_INDICES = { { 0 }, { 2 }, { 1 } };
 
-    private TrainingSamplesProvider provider = SamplesProviders.newTrainingProvider(INPUTS, false,
+    private final TrainingSamplesProvider provider = SamplesProviders.newTrainingProvider(INPUTS, false,
             EXPECTEDS);
 
-    private MatrixNeuralNetwork<CMArrayMatrix> network;
     private MatrixSamplesSource<CMArrayMatrix> source;
 
     @Before
     public void setup() {
-        network = new MatrixNeuralNetwork<>(CMArrayMatrix::new, 2, 4, 3);
+        MatrixNeuralNetwork<CMArrayMatrix> network = new MatrixNeuralNetwork<>(CMArrayMatrix::new, 2, 4, 3);
         source = new MatrixSamplesSource<>(network);
     }
 

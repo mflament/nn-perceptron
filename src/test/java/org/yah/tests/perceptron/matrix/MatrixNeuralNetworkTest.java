@@ -1,6 +1,3 @@
-/**
- * 
- */
 package org.yah.tests.perceptron.matrix;
 
 import java.util.function.Consumer;

@@ -1,11 +1,10 @@
-/**
- * 
- */
 package org.yah.tests.perceptron.opencl;
 
+import java.nio.ByteBuffer;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 
+import org.lwjgl.BufferUtils;
 import org.yah.tests.perceptron.InputSamples;
 import org.yah.tests.perceptron.SamplesProviders.SamplesProvider;
 import org.yah.tests.perceptron.SamplesProviders.TrainingSamplesProvider;
@@ -29,37 +28,37 @@ class CLSamplesSource implements SamplesSource {
 
     @Override
     public InputSamples createInputs(SamplesProvider provider, int batchSize) {
-        CLBuffer inputsBuffer = network.createMatrixBuffer(network.features(), provider.samples(),
-                (r, c) -> (float) provider.input(c, r), BufferProperties.MEM_COPY_HOST_PTR,
-                BufferProperties.MEM_READ_ONLY, BufferProperties.MEM_HOST_WRITE_ONLY);
+        CLBuffer inputsBuffer = createInputsBuffer(provider);
         return new CLTrainingSamples(provider.samples(), batchSize, inputsBuffer);
     }
 
     @Override
     public TrainingSamples createTraining(TrainingSamplesProvider provider, int batchSize) {
-        CLBuffer inputsBuffer = network.createMatrixBuffer(network.features(), provider.samples(),
-                (r, c) -> (float) provider.input(c, r), BufferProperties.MEM_COPY_HOST_PTR,
-                BufferProperties.MEM_READ_ONLY, BufferProperties.MEM_HOST_WRITE_ONLY);
+        CLBuffer inputsBuffer = createInputsBuffer(provider);
 
-        CLBuffer expectedOutputsBuffer = network.createMatrixBuffer(network.outputs(),
-                provider.samples(),
-                (r, c) -> provider.outputIndex(c) == r ? 1f : 0f,
-                BufferProperties.MEM_COPY_HOST_PTR,
-                BufferProperties.MEM_READ_ONLY, BufferProperties.MEM_HOST_WRITE_ONLY);
-
-        int[] expectedIndices = new int[provider.samples()];
-        for (int i = 0; i < expectedIndices.length; i++) {
-            expectedIndices[i] = provider.outputIndex(i);
+        int samples = provider.samples();
+        ByteBuffer buffer = BufferUtils.createByteBuffer(samples * Integer.BYTES);
+        for (int i = 0; i < samples; i++) {
+            buffer.putInt(provider.outputIndex(i));
         }
-
-        return new CLTrainingSamples(provider.samples(), batchSize, inputsBuffer,
-                expectedOutputsBuffer, expectedIndices);
+        buffer.flip();
+        CLBuffer expectedIndicesBuffer = network.environment.mem(buffer,
+                BufferProperties.MEM_COPY_HOST_PTR,
+                BufferProperties.MEM_READ_ONLY,
+                BufferProperties.MEM_HOST_WRITE_ONLY);
+        return new CLTrainingSamples(samples, batchSize, inputsBuffer, expectedIndicesBuffer);
     }
 
-    public static class CLTrainingBatch {
+    private CLBuffer createInputsBuffer(SamplesProvider provider) {
+        return network.createMatrixBuffer(network.features(), provider.samples(),
+                (r, c) -> provider.input(c, r), BufferProperties.MEM_COPY_HOST_PTR,
+                BufferProperties.MEM_READ_ONLY, BufferProperties.MEM_HOST_NO_ACCESS);
+    }
+
+    static class CLTrainingBatch {
         private final CLTrainingSamples samples;
-        public int offset;
-        public int batchSize;
+        int offset;
+        int batchSize;
 
         public CLTrainingBatch(CLTrainingSamples samples) {
             this.samples = samples;
@@ -67,11 +66,7 @@ class CLSamplesSource implements SamplesSource {
 
         public CLMemObject getInputs() { return samples.inputsBuffer; }
 
-        public CLMemObject getExpectedOutputs() { return samples.expectedOutputsBuffer; }
-
-        public int getExpectedIndex(int sample) {
-            return samples.expectedIndices[offset + sample];
-        }
+        public CLMemObject getExpectedIndices() { return samples.expectedIndicesBuffer; }
     }
 
     static private class CLTrainingBatchIterator implements Iterator<CLTrainingBatch> {
@@ -107,22 +102,19 @@ class CLSamplesSource implements SamplesSource {
         private final int batchSize;
 
         final CLBuffer inputsBuffer;
-        final CLBuffer expectedOutputsBuffer;
-        final int[] expectedIndices;
+        final CLBuffer expectedIndicesBuffer;
 
         public CLTrainingSamples(int size, int batchSize, CLBuffer inputsBuffer) {
-            this(size, batchSize, inputsBuffer, null, null);
+            this(size, batchSize, inputsBuffer, null);
         }
 
         public CLTrainingSamples(int size, int batchSize,
                 CLBuffer inputsBuffer,
-                CLBuffer expectedOutputsBuffer,
-                int[] expectedIndices) {
+                CLBuffer expectedIndicesBuffer) {
             this.size = size;
             this.batchSize = batchSize == 0 ? size : batchSize;
             this.inputsBuffer = inputsBuffer;
-            this.expectedOutputsBuffer = expectedOutputsBuffer;
-            this.expectedIndices = expectedIndices;
+            this.expectedIndicesBuffer = expectedIndicesBuffer;
         }
 
         @Override
@@ -141,13 +133,12 @@ class CLSamplesSource implements SamplesSource {
         }
 
         @Override
-        public void close() throws Exception {
+        public void close() {
             inputsBuffer.close();
-            if (expectedOutputsBuffer != null) { expectedOutputsBuffer.close(); }
+            if (expectedIndicesBuffer != null) {
+                expectedIndicesBuffer.close();
+            }
         }
 
-        public int expectedIndex(int sample) {
-            return expectedIndices[sample];
-        }
     }
 }

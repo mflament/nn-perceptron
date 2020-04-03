@@ -10,7 +10,7 @@ public class MTMatrixTest {
     private double[] data;
 
     @Before
-    public void setUp() throws Exception {
+    public void setUp() {
         data = new double[15];
         for (int i = 0; i < data.length; i++) {
             data[i] = i;

@@ -74,14 +74,14 @@ public class FlowersDemo {
     private static final int TRAINING_BATCH_SIZE = 256;
     private static final double LEARNING_RATE = 0.5f;
 
-    private final float[] QUAD_VERTICES = { -1, -1, 0, 1, //
+    private static final float[] QUAD_VERTICES = { -1, -1, 0, 1, //
             -1, 1, 0, 0, //
             1, 1, 1, 0, //
             -1, -1, 0, 1, //
             1, 1, 1, 0, //
             1, -1, 1, 1 };
 
-    private Color4f[] FLOWER_COLORS = { new Color4f(0.9f, 0, 0, 1), new Color4f(0, 0.9f, 0, 1) };
+    private static final Color4f[] FLOWER_COLORS = { new Color4f(0.9f, 0, 0, 1), new Color4f(0, 0.9f, 0, 1) };
 
     private List<Runnable> tasks = new ArrayList<>();
 
@@ -92,16 +92,18 @@ public class FlowersDemo {
     private final TrainingSamples allFlowers;
     private final TrainingSamples trainingFlowers;
 
-    private GLWindow window;
+    private final GLWindow window;
     private boolean paused = true;
     private boolean destroyed;
 
     private final IntBuffer outputsBuffer;
 
-    private Program renderProgram;
-    private VBO vbo;
-    private VAO vao;
-    private Texture2D flowersTexture, outputsTexture, samplesTexture;
+    private final Program renderProgram;
+    private final VBO vbo;
+    private final VAO vao;
+    private final Texture2D flowersTexture;
+    private final Texture2D outputsTexture;
+    private final Texture2D samplesTexture;
 
     private OutputStream snapshotOutputStream;
     private InputStream snapshotInputStream;
@@ -145,13 +147,13 @@ public class FlowersDemo {
         vao.bind();
 
         renderProgram.use();
-        glUniform4fv(renderProgram.findUniformLocation("flowerColors"), colorBuffer(FLOWER_COLORS));
+        glUniform4fv(renderProgram.findUniformLocation("flowerColors"), colorBuffer());
         glUniform1i(renderProgram.findUniformLocation("expectedFlowers"), 0);
         glUniform1i(renderProgram.findUniformLocation("actualFlowers"), 1);
         glUniform1i(renderProgram.findUniformLocation("sampledFlowers"), 2);
 
         int samples = flowersProvider.samples();
-        int outputs[] = new int[samples];
+        int[] outputs = new int[samples];
         for (int i = 0; i < samples; i++) {
             outputs[i] = flowersProvider.outputIndex(i);
         }
@@ -194,13 +196,13 @@ public class FlowersDemo {
                 .build();
     }
 
-    private FloatBuffer colorBuffer(Color4f[] colors) {
-        FloatBuffer fb = BufferUtils.createFloatBuffer(colors.length * 4);
-        for (int i = 0; i < colors.length; i++) {
-            fb.put(colors[i].r);
-            fb.put(colors[i].g);
-            fb.put(colors[i].b);
-            fb.put(colors[i].a);
+    private static FloatBuffer colorBuffer() {
+        FloatBuffer fb = BufferUtils.createFloatBuffer(FLOWER_COLORS.length * 4);
+        for (Color4f flowerColor : FLOWER_COLORS) {
+            fb.put(flowerColor.r);
+            fb.put(flowerColor.g);
+            fb.put(flowerColor.b);
+            fb.put(flowerColor.a);
         }
         return fb.flip();
     }
@@ -218,7 +220,7 @@ public class FlowersDemo {
         window.show();
         glViewport(0, 0, WIDTH, HEIGHT);
 
-        List<Runnable> nextTasks = new ArrayList<Runnable>();
+        List<Runnable> nextTasks = new ArrayList<>();
         executor.submit(new TrainingLoop());
         while (!window.isCloseRequested()) {
             glfwPollEvents();
@@ -299,7 +301,7 @@ public class FlowersDemo {
     }
 
     private class TrainingLoop implements Runnable {
-        private double overallAccuracy, trainingAccuracy;
+        private double overallAccuracy;
         private final AtomicBoolean updateComplete = new AtomicBoolean();
 
         @Override
@@ -307,7 +309,7 @@ public class FlowersDemo {
             try {
                 updateOutputs();
 
-                trainingAccuracy = network.evaluate(trainingFlowers);
+                double trainingAccuracy = network.evaluate(trainingFlowers);
                 System.out.println(String.format(
                         "training accuracy: %.2f%%; overall accuracy: %.2f%%",
                         trainingAccuracy * 100, overallAccuracy * 100));
@@ -315,7 +317,7 @@ public class FlowersDemo {
                 long lastLog = System.currentTimeMillis();
                 int lastEepochs = 0;
                 long epochs = 0;
-                long trainingTime = 0, evaluationTime = 0, trainingEvaluationTime = 0, start;
+                long trainingTime = 0, evaluationTime, trainingEvaluationTime, start;
                 while (true) {
                     synchronized (monitor) {
                         while (paused && !destroyed) {
@@ -349,7 +351,7 @@ public class FlowersDemo {
 
                         long samples = lastEepochs * SAMPLES;
                         double eps = lastEepochs / (elapsed / 1000.0);
-                        double sms = samples / elapsed;
+                        double sms = samples / (double) elapsed;
                         long avgtt = TimeUnit.NANOSECONDS.toMillis(trainingTime) / lastEepochs;
                         long et = TimeUnit.NANOSECONDS.toMillis(evaluationTime);
                         long tet = TimeUnit.NANOSECONDS.toMillis(trainingEvaluationTime);
@@ -371,6 +373,7 @@ public class FlowersDemo {
             }
         }
 
+        /** @noinspection unused*/
         private void checkSnapshot(long epoch) {
             // byte[] expected;
             ByteBuffer buffer;
@@ -419,7 +422,7 @@ public class FlowersDemo {
 
         boolean snapshoted = false;
 
-        private void snapshot(long epoch) {
+        private void snapshot() {
             if (snapshoted)
                 return;
             ByteBuffer snapshot = network.snapshot();
@@ -433,6 +436,7 @@ public class FlowersDemo {
             snapshoted = true;
         }
 
+        /** @noinspection unused*/
         private byte[] networkSnapshot() {
             ByteBuffer snapshot = network.snapshot();
             MessageDigest md;
@@ -442,8 +446,7 @@ public class FlowersDemo {
                 throw new RuntimeException(e);
             }
             md.update(snapshot);
-            byte[] digest = md.digest();
-            return digest;
+            return md.digest();
         }
 
         private void updateOutputs() throws InterruptedException {
@@ -487,7 +490,7 @@ public class FlowersDemo {
     }
 
     private static NeuralNetwork createNetwork(String arg) throws IOException {
-        NeuralNetwork network = null;
+        NeuralNetwork network;
         switch (arg) {
         case "native":
             network = new NativeNeuralNetwork(LAYERS);

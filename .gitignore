@@ -1,2 +1,2 @@
 cpp/build
-.vs
+cpp/jni/*.h

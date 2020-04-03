@@ -1,6 +1,3 @@
-/**
- * 
- */
 package org.yah.tests.perceptron;
 
 import org.yah.tests.perceptron.SamplesProviders.TrainingSamplesProvider;

@@ -12,6 +12,7 @@
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 		<lwjgl.version>3.2.3</lwjgl.version>
+		<jmh.version>1.21</jmh.version>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -91,7 +92,6 @@
 		<profile>
 			<id>benchmarks</id>
 			<properties>
-				<jmh.version>1.21</jmh.version>
 				<uberjar.name>benchmarks</uberjar.name>
 			</properties>
 			<dependencies>

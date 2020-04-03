@@ -1,6 +1,3 @@
-/**
- * 
- */
 package org.yah.tests.perceptron.matrix;
 
 import java.nio.DoubleBuffer;
@@ -201,7 +198,7 @@ public class MatrixNeuralNetwork<M extends Matrix<M>> implements NeuralNetwork {
         this.batchSize = batchSize;
     }
 
-    private M propagate(MatrixBatch<M> batch) {
+    private void propagate(MatrixBatch<M> batch) {
         setBatchSize(batch.batchSize());
         M inputs = batch.inputs();
         for (int layer = 0; layer < layers; layer++) {
@@ -210,7 +207,6 @@ public class MatrixNeuralNetwork<M extends Matrix<M>> implements NeuralNetwork {
         for (int col = 0; col < batchSize; col++) {
             batchOutputs[col] = inputs.maxRowIndex(col);
         }
-        return inputs;
     }
 
     private void train(MatrixBatch<M> batch, double learningRate) {
@@ -274,14 +270,6 @@ public class MatrixNeuralNetwork<M extends Matrix<M>> implements NeuralNetwork {
         weights[layer].sub(wgrads[layer].mul(lr));
         // b = b - (learningRate/batchSize) * bgrad
         biases[layer].sub(bgrads[layer].mul(lr));
-    }
-
-    protected class BatchContext {
-
-        public BatchContext() {
-
-        }
-
     }
 
 }

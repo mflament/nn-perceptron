@@ -1,6 +1,3 @@
-/**
- * 
- */
 package org.yah.tests.perceptron.matrix.array;
 
 import java.util.Arrays;
@@ -14,7 +11,7 @@ import org.yah.tests.perceptron.matrix.Matrix;
  */
 public class CMArrayMatrix implements Matrix<CMArrayMatrix> {
 
-    private double[][] data; // [col][rows]
+    private final double[][] data; // [col][rows]
 
     private int colOffset;
     private int columns;
@@ -25,7 +22,6 @@ public class CMArrayMatrix implements Matrix<CMArrayMatrix> {
     }
 
     /**
-     * @param data column major data (needs a standard ...)
      */
     public CMArrayMatrix(double[][] _data) {
         colOffset = 0;
@@ -40,6 +36,7 @@ public class CMArrayMatrix implements Matrix<CMArrayMatrix> {
     public CMArrayMatrix(CMArrayMatrix from) {
         this.data = from.data;
         this.columns = this.data.length;
+        this.colOffset = 0;
     }
 
     @Override
@@ -89,7 +86,7 @@ public class CMArrayMatrix implements Matrix<CMArrayMatrix> {
     }
 
     @Override
-    public CMArrayMatrix sub(CMArrayMatrix b, CMArrayMatrix target) {
+    public void sub(CMArrayMatrix b, CMArrayMatrix target) {
         int rows = rows();
         for (int col = 0; col < columns; col++) {
             double[] acols = data[col + colOffset];
@@ -99,11 +96,10 @@ public class CMArrayMatrix implements Matrix<CMArrayMatrix> {
                 tcols[row] = acols[row] - bcols[row];
             }
         }
-        return target;
     }
 
     @Override
-    public CMArrayMatrix mul(CMArrayMatrix b, CMArrayMatrix target) {
+    public void mul(CMArrayMatrix b, CMArrayMatrix target) {
         int rows = rows();
         for (int col = 0; col < columns; col++) {
             double[] acols = data[col + colOffset];
@@ -113,7 +109,6 @@ public class CMArrayMatrix implements Matrix<CMArrayMatrix> {
                 tcols[row] = acols[row] * bcols[row];
             }
         }
-        return target;
     }
 
     @Override
@@ -212,7 +207,7 @@ public class CMArrayMatrix implements Matrix<CMArrayMatrix> {
     }
 
     @Override
-    public CMArrayMatrix addColumnVector(CMArrayMatrix vector, CMArrayMatrix target) {
+    public void addColumnVector(CMArrayMatrix vector, CMArrayMatrix target) {
         int rows = rows();
         assert vector.columns == 1;
         assert vector.rows() == rows;
@@ -225,7 +220,6 @@ public class CMArrayMatrix implements Matrix<CMArrayMatrix> {
                 targetCol[row] = col[row] + vectorCol[row];
             }
         }
-        return target;
     }
 
     @Override
@@ -244,7 +238,7 @@ public class CMArrayMatrix implements Matrix<CMArrayMatrix> {
     }
 
     @Override
-    public CMArrayMatrix sigmoid_prime(CMArrayMatrix target) {
+    public void sigmoid_prime(CMArrayMatrix target) {
         int rows = rows();
         assert target.columns == columns;
         assert target.rows() == rows;
@@ -255,11 +249,10 @@ public class CMArrayMatrix implements Matrix<CMArrayMatrix> {
                 tcol[r] = Activation.sigmoid_prime(col[r]);
             }
         }
-        return target;
     }
 
     @Override
-    public CMArrayMatrix sumRows(CMArrayMatrix target) {
+    public void sumRows(CMArrayMatrix target) {
         int rows = rows();
         assert target.rows() == rows;
         assert target.columns == 1;
@@ -271,7 +264,6 @@ public class CMArrayMatrix implements Matrix<CMArrayMatrix> {
                 tcol[r] += col[r];
             }
         }
-        return target;
     }
 
     @Override

@@ -1,6 +1,3 @@
-/**
- * 
- */
 package org.yah.tests.perceptron.flowers;
 
 import org.yah.tests.perceptron.RandomUtils;
