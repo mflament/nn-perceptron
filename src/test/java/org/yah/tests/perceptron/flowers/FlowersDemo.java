@@ -1,35 +1,5 @@
 package org.yah.tests.perceptron.flowers;
 
-import static org.lwjgl.glfw.GLFW.glfwPollEvents;
-import static org.lwjgl.opengl.GL11.GL_TRIANGLES;
-import static org.lwjgl.opengl.GL11.glDrawArrays;
-import static org.lwjgl.opengl.GL11.glViewport;
-import static org.lwjgl.opengl.GL13.GL_TEXTURE0;
-import static org.lwjgl.opengl.GL13.GL_TEXTURE1;
-import static org.lwjgl.opengl.GL13.GL_TEXTURE2;
-import static org.lwjgl.opengl.GL13.glActiveTexture;
-import static org.lwjgl.opengl.GL20.glUniform1i;
-import static org.lwjgl.opengl.GL20.glUniform4fv;
-
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.io.UncheckedIOException;
-import java.nio.ByteBuffer;
-import java.nio.DoubleBuffer;
-import java.nio.FloatBuffer;
-import java.nio.IntBuffer;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-
 import org.lwjgl.BufferUtils;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.opengl.GL;
@@ -37,13 +7,7 @@ import org.lwjgl.system.MemoryUtil;
 import org.yah.games.opengl.Color4f;
 import org.yah.games.opengl.shader.Program;
 import org.yah.games.opengl.shader.Shader;
-import org.yah.games.opengl.texture.Texture2D;
-import org.yah.games.opengl.texture.TextureDataType;
-import org.yah.games.opengl.texture.TextureFormat;
-import org.yah.games.opengl.texture.TextureInternalFormat;
-import org.yah.games.opengl.texture.TextureMagFilter;
-import org.yah.games.opengl.texture.TextureMinFilter;
-import org.yah.games.opengl.texture.TextureWrap;
+import org.yah.games.opengl.texture.*;
 import org.yah.games.opengl.vao.ComponentType;
 import org.yah.games.opengl.vao.VAO;
 import org.yah.games.opengl.vbo.BufferAccess;
@@ -51,14 +15,31 @@ import org.yah.games.opengl.vbo.BufferAccess.Frequency;
 import org.yah.games.opengl.vbo.BufferAccess.Nature;
 import org.yah.games.opengl.vbo.VBO;
 import org.yah.games.opengl.window.GLWindow;
-import org.yah.tests.perceptron.NeuralNetwork;
-import org.yah.tests.perceptron.SamplesSource;
-import org.yah.tests.perceptron.TrainingSamples;
+import org.yah.tests.perceptron.*;
+import org.yah.tests.perceptron.base.DefaultNetworkState;
+import org.yah.tests.perceptron.base.DirectBufferOutputs;
 import org.yah.tests.perceptron.jni.NativeNeuralNetwork;
 import org.yah.tests.perceptron.matrix.MatrixNeuralNetwork;
 import org.yah.tests.perceptron.matrix.array.CMArrayMatrix;
 import org.yah.tests.perceptron.mt.MTNeuralNetwork;
 import org.yah.tests.perceptron.opencl.CLNeuralNetwork;
+
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.FloatBuffer;
+import java.nio.IntBuffer;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import static org.lwjgl.glfw.GLFW.glfwPollEvents;
+import static org.lwjgl.opengl.GL11.*;
+import static org.lwjgl.opengl.GL13.*;
+import static org.lwjgl.opengl.GL20.glUniform1i;
+import static org.lwjgl.opengl.GL20.glUniform4fv;
 
 public class FlowersDemo {
 
@@ -68,20 +49,20 @@ public class FlowersDemo {
 
     private static final int FLOWERS = WIDTH * HEIGHT;
 
-    private static final int[] LAYERS = { 2, 16, 2 };
+    private static final int[] LAYERS = {2, 16, 2};
     private static final int SAMPLES = (int) (FLOWERS * 0.005);
     private static final int EVAL_BATCH_SIZE = 0;
     private static final int TRAINING_BATCH_SIZE = 256;
     private static final double LEARNING_RATE = 0.5f;
 
-    private static final float[] QUAD_VERTICES = { -1, -1, 0, 1, //
+    private static final float[] QUAD_VERTICES = {-1, -1, 0, 1, //
             -1, 1, 0, 0, //
             1, 1, 1, 0, //
             -1, -1, 0, 1, //
             1, 1, 1, 0, //
-            1, -1, 1, 1 };
+            1, -1, 1, 1};
 
-    private static final Color4f[] FLOWER_COLORS = { new Color4f(0.9f, 0, 0, 1), new Color4f(0, 0.9f, 0, 1) };
+    private static final Color4f[] FLOWER_COLORS = {new Color4f(0.9f, 0, 0, 1), new Color4f(0, 0.9f, 0, 1)};
 
     private List<Runnable> tasks = new ArrayList<>();
 
@@ -96,7 +77,7 @@ public class FlowersDemo {
     private boolean paused = true;
     private boolean destroyed;
 
-    private final IntBuffer outputsBuffer;
+    private final NetworkOutputs networkOutputs;
 
     private final Program renderProgram;
     private final VBO vbo;
@@ -105,18 +86,16 @@ public class FlowersDemo {
     private final Texture2D outputsTexture;
     private final Texture2D samplesTexture;
 
-    private OutputStream snapshotOutputStream;
-    private InputStream snapshotInputStream;
-
     public FlowersDemo(NeuralNetwork network) {
         this.network = network;
         executor = Executors.newSingleThreadExecutor();
 
-        SamplesSource samplesSource = network.createSampleSource();
         AllFlowersProvider flowersProvider = new AllFlowersProvider(WIDTH, HEIGHT, NOISE_SCALE);
-        allFlowers = samplesSource.createTraining(flowersProvider, EVAL_BATCH_SIZE);
+        allFlowers = network.createTraining(flowersProvider, EVAL_BATCH_SIZE);
+        networkOutputs = network.createOutpus(allFlowers.size());
+
         TrainingFlowersProvider trainingProvider = new TrainingFlowersProvider(flowersProvider, SAMPLES);
-        trainingFlowers = samplesSource.createTraining(trainingProvider, TRAINING_BATCH_SIZE);
+        trainingFlowers = network.createTraining(trainingProvider, TRAINING_BATCH_SIZE);
 
         printInfo();
 
@@ -153,21 +132,18 @@ public class FlowersDemo {
         glUniform1i(renderProgram.findUniformLocation("sampledFlowers"), 2);
 
         int samples = flowersProvider.samples();
-        int[] outputs = new int[samples];
+        ByteBuffer outputsBufer = BufferUtils.createByteBuffer(samples * Integer.BYTES);
         for (int i = 0; i < samples; i++) {
-            outputs[i] = flowersProvider.outputIndex(i);
+            outputsBufer.putInt(flowersProvider.outputIndex(i));
         }
-
-        outputsBuffer = BufferUtils.createIntBuffer(samples);
-        outputsBuffer.put(outputs).flip();
+        outputsBufer.flip();
 
         flowersTexture = Texture2D.builder(WIDTH, HEIGHT)
                 .withInternalFormat(TextureInternalFormat.R32UI)
                 .minFilter(TextureMinFilter.NEAREST)
                 .magFilter(TextureMagFilter.NEAREST)
                 .wrapS(TextureWrap.REPEAT)
-                .withData(0, TextureFormat.RED_INTEGER, TextureDataType.UNSIGNED_INT,
-                        MemoryUtil.memByteBuffer(outputsBuffer))
+                .withData(0, TextureFormat.RED_INTEGER, TextureDataType.UNSIGNED_INT, outputsBufer)
                 .build();
 
         outputsTexture = Texture2D.builder(WIDTH, HEIGHT)
@@ -262,12 +238,12 @@ public class FlowersDemo {
 
     private void keyPressed(int key, int scancode, int mods) {
         switch (key) {
-        case GLFW.GLFW_KEY_SPACE:
-            notifyTrainingLoop(() -> paused = !paused);
-            break;
-        case GLFW.GLFW_KEY_ESCAPE:
-            window.requestClose();
-            break;
+            case GLFW.GLFW_KEY_SPACE:
+                notifyTrainingLoop(() -> paused = !paused);
+                break;
+            case GLFW.GLFW_KEY_ESCAPE:
+                window.requestClose();
+                break;
         }
     }
 
@@ -293,11 +269,6 @@ public class FlowersDemo {
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
-        closeQuietly(allFlowers);
-        closeQuietly(trainingFlowers);
-
-        closeQuietly(snapshotOutputStream);
-        closeQuietly(snapshotInputStream);
     }
 
     private class TrainingLoop implements Runnable {
@@ -339,10 +310,9 @@ public class FlowersDemo {
 
                     long elapsed = System.currentTimeMillis() - lastLog;
                     if (elapsed > 1000) {
-                        outputsBuffer.position(0);
-
+                        networkOutputs.reset();
                         start = System.nanoTime();
-                        overallAccuracy = network.evaluate(allFlowers, outputsBuffer);
+                        overallAccuracy = network.evaluate(allFlowers, networkOutputs);
                         evaluationTime = System.nanoTime() - start;
 
                         start = System.nanoTime();
@@ -373,86 +343,7 @@ public class FlowersDemo {
             }
         }
 
-        /** @noinspection unused*/
-        private void checkSnapshot(long epoch) {
-            // byte[] expected;
-            ByteBuffer buffer;
-            try {
-                if (snapshotInputStream == null) { snapshotInputStream = new FileInputStream("snapshot.bin"); }
-                buffer = ByteBuffer.wrap(snapshotInputStream.readAllBytes());
-            } catch (IOException e) {
-                throw new UncheckedIOException(e);
-            }
-
-            DoubleBuffer actualBuffer = network.snapshot().asDoubleBuffer();
-
-            DoubleBuffer doubleBuffer = buffer.asDoubleBuffer();
-            for (int l = 0; l < network.layers(); l++) {
-                int neurons = network.neurons(l);
-                int features = network.features(l);
-                for (int n = 0; n < neurons; n++) {
-                    for (int f = 0; f < features; f++) {
-                        double expected = doubleBuffer.get();
-                        double actual = actualBuffer.get();
-                        if (expected != actual)
-                            throw new IllegalStateException(
-                                    String.format("mimatch at layer %d,weight(%d, %d)", l, n, f));
-                    }
-                }
-                for (int n = 0; n < neurons; n++) {
-                    double expected = doubleBuffer.get();
-                    double actual = actualBuffer.get();
-                    if (expected != actual)
-                        throw new IllegalStateException(
-                                String.format("mimatch at layer %d, bias(%d)", l, n));
-                }
-
-            }
-//            if (expected.length < 16) {
-//                System.out.println("End of snapshot");
-//                return;
-//            }
-//
-//            byte[] actual = networkSnapshot();
-//            for (int i = 0; i < actual.length; i++) {
-//                if (actual[i] != expected[i])
-//                    throw new IllegalStateException("snapshot mismatch " + epoch);
-//            }
-        }
-
-        boolean snapshoted = false;
-
-        private void snapshot() {
-            if (snapshoted)
-                return;
-            ByteBuffer snapshot = network.snapshot();
-            // byte[] digest = networkSnapshot();
-            try {
-                if (snapshotOutputStream == null) { snapshotOutputStream = new FileOutputStream("snapshot.bin"); }
-                snapshotOutputStream.write(snapshot.array());
-            } catch (IOException e) {
-                throw new UncheckedIOException(e);
-            }
-            snapshoted = true;
-        }
-
-        /** @noinspection unused*/
-        private byte[] networkSnapshot() {
-            ByteBuffer snapshot = network.snapshot();
-            MessageDigest md;
-            try {
-                md = MessageDigest.getInstance("MD5");
-            } catch (NoSuchAlgorithmException e) {
-                throw new RuntimeException(e);
-            }
-            md.update(snapshot);
-            return md.digest();
-        }
-
         private void updateOutputs() throws InterruptedException {
-            outputsBuffer.position(0);
-            overallAccuracy = network.evaluate(allFlowers, outputsBuffer);
-
             synchronized (monitor) {
                 updateComplete.set(false);
                 schedule(this::copyOutputs);
@@ -461,11 +352,19 @@ public class FlowersDemo {
             }
         }
 
+        private IntBuffer outputsBuffer;
+
         private void copyOutputs() {
             outputsTexture.bind();
-            outputsBuffer.position(0);
-            outputsTexture.updateData(TextureFormat.RED_INTEGER, TextureDataType.UNSIGNED_INT,
-                    MemoryUtil.memByteBuffer(outputsBuffer));
+            networkOutputs.reset();
+            if (networkOutputs instanceof DirectBufferOutputs) {
+                outputsBuffer = ((DirectBufferOutputs) networkOutputs).buffer();
+            } else {
+                if (outputsBuffer == null)
+                    outputsBuffer = BufferUtils.createIntBuffer(allFlowers.size());
+                networkOutputs.copy(outputsBuffer);
+            }
+            outputsTexture.updateData(TextureFormat.RED_INTEGER, TextureDataType.UNSIGNED_INT, MemoryUtil.memByteBuffer(outputsBuffer));
             notifyTrainingLoop(() -> updateComplete.set(true));
         }
     }
@@ -491,18 +390,19 @@ public class FlowersDemo {
 
     private static NeuralNetwork createNetwork(String arg) throws IOException {
         NeuralNetwork network;
+        NeuralNetworkState state = new DefaultNetworkState(RandomUtils.newRandomSource(), LAYERS);
         switch (arg) {
-        case "native":
-            network = new NativeNeuralNetwork(LAYERS);
-            break;
-        case "cl":
-            network = new CLNeuralNetwork(LAYERS);
-            break;
-        case "mt":
-            network = new MTNeuralNetwork(LAYERS);
-            break;
-        default:
-            network = new MatrixNeuralNetwork<>(CMArrayMatrix::new, LAYERS);
+            case "native":
+                network = new NativeNeuralNetwork(state);
+                break;
+            case "cl":
+                network = new CLNeuralNetwork(state);
+                break;
+            case "mt":
+                network = new MTNeuralNetwork(state);
+                break;
+            default:
+                network = new MatrixNeuralNetwork<>(CMArrayMatrix::new, state);
         }
         return network;
     }

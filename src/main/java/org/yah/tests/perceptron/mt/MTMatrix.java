@@ -1,5 +1,7 @@
 package org.yah.tests.perceptron.mt;
 
+import org.yah.tests.perceptron.matrix.MatrixFunction;
+
 import java.util.Arrays;
 
 public class MTMatrix {
@@ -131,6 +133,10 @@ public class MTMatrix {
 
     public void columns(int columns) {
         this.columns = columns;
+    }
+
+    public int maxColumn() {
+        return capacity() / rows;
     }
 
     public int maxRowIndex(int col) {

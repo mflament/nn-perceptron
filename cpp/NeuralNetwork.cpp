@@ -4,13 +4,9 @@
 #include "jni/org_yah_tests_perceptron_jni_NativeNeuralNetwork.h"
 #include <iostream>
 #include <math.h>
-#include <random>
-#include "Matrix.h"
+#include <algorithm>
 #include "TrainingSamples.h"
-
-
-std::default_random_engine generator;
-std::normal_distribution<double> distribution(0, 1.0);
+#include "StreamBuffer.h"
 
 double sigmoid(double v) {
 	return 1.0 / (1.0 + exp(-v));
@@ -21,29 +17,36 @@ double sigmoid_prime(double v) {
 	return s * (1.0 - s);
 }
 
-void randomize(Matrix& m, int features) {
-	double s = sqrt(2.0 / features);
-	for (int c = 0; c < m.columns; c++) {
-		double* col = m.column(c);
-		for (int r = 0; r < m.rows; r++) {
-			col[r] = distribution(generator) * s;
-		}
-	}
+double* newMatrix(int rows, int columns) {
+	double* res = new double[rows * columns];
+	memset(res, 0, rows * columns * sizeof(double));
+	return res;
 }
 
-class TrainingContext;
+int maxIndex(double* values, int count) {
+	int res = 0;
+	for (int i = 1; i < count; i++) {
+		if (values[i] > values[res])
+			res = i;
+	}
+	return res;
+}
 
 class NeuralNetwork {
 private:
 	int layersCount = 0;
 	int* layerSizes = 0;
-	Matrix* weights = 0;
-	Matrix* biases = 0;
+	double** weights = 0;
+	double** biases = 0;
 
-	TrainingContext* trainingContext;
+	int capacity = 0;
+	double** zs = 0;
+	double** activations = 0;
 
+	double** wgrads = 0;
+	double** bgrads = 0;
 public:
-	NeuralNetwork(int, int*);
+	NeuralNetwork(int, int*, double* state);
 	~NeuralNetwork();
 
 	inline int layers() const { return layersCount; }
@@ -52,295 +55,254 @@ public:
 	inline int neurons(int layer) const { return layerSizes[layer + 1]; }
 	inline int features(int layer) const { return layerSizes[layer]; }
 
-	inline Matrix* weight(int layer) { return weights + layer; }
-	inline Matrix* bias(int layer) { return biases + layer; }
+	void propagate(const TrainingSamples& samples, int* outputs);
+	double evaluate(const TrainingSamples& samples, int* outputs);
+	void train(const TrainingSamples& samples, double learningRate);
 
-	void propagate(TrainingSamples* samples, int* outputs) const;
-	double evaluate(TrainingSamples* samples, int* outputs) const;
-	void train(TrainingSamples* samples, double learningRate);
-};
-
-class TrainingContext {
 private:
-	NeuralNetwork* network;
-	int batchSize = 0;
-	Matrix* zs = 0;
-	Matrix* activations = 0;
+	void forward(TrainingBatch& batch);
 
-	Matrix* wgrads = 0;
-	Matrix* bgrads = 0;
-public:
-	TrainingContext(NeuralNetwork* network);
-	~TrainingContext();
+	void ensureCapacity(int capacity);
 
-	inline int layers() const { return network->layers(); }
-	inline Matrix* activation(int layer) {
-		if (layer < 0) return activations + network->layers() + layer;
-		return activations + layer;
-	}
-	void setBatchSize(int);
+	int indexOutputs(TrainingBatch& batch, int* outputs);
 
-	void forward(Matrix& inputs);
-	void forward(int layer, Matrix& inputs);
-	void backward(int layer, Matrix& inputs);
-	void updateNetwork(int layer, double learningRate);
+	void train(TrainingBatch& batch, double learningRate);
 
-	void getOutputIndices(int* outputs, int outputsOffset) const;
-	int getOutputIndices(Matrix& expecteds, int* outputs, int outputsOffset) const;
+	void backward(int layer, const double* inputs, int samples);
+	void updateNetwork(int layer, double lr);
+
 };
 
-NeuralNetwork::NeuralNetwork(int _layersCount, int* _layerSizes) : layersCount(_layersCount) {
-	layerSizes = _layerSizes;
-	weights = new Matrix[layersCount];
-	biases = new Matrix[layersCount];
+NeuralNetwork::NeuralNetwork(int _layersCount, int* _layerSizes, double* state)
+	: layersCount(_layersCount), layerSizes(_layerSizes) {
+	weights = new double* [layersCount];
+	biases = new double* [layersCount];
+	zs = new double* [layersCount];
+	activations = new double* [layersCount];
+	wgrads = new double* [layersCount];
+	bgrads = new double* [layersCount];
 
-	for (int layer = 0; layer < layersCount; layer++) {
-		int rows = neurons(layer);
-		int columns = features(layer);
-		weights[layer].create(rows, columns);
-		randomize(weights[layer], columns);
-		biases[layer].create(rows, 1);
+	int stateOffset = 0;
+	for (int layer = 0; layer < layersCount; layer++)
+	{
+		weights[layer] = state + stateOffset;
+		stateOffset += neurons(layer) * features(layer);
+
+		wgrads[layer] = newMatrix(neurons(layer), features(layer));
+		bgrads[layer] = newMatrix(neurons(layer), 1);
 	}
-	trainingContext = new TrainingContext(this);
+	for (int layer = 0; layer < layersCount; layer++)
+	{
+		biases[layer] = state + stateOffset;
+		stateOffset += neurons(layer);
+	}
 }
 
 NeuralNetwork::~NeuralNetwork() {
-	if (layersCount) {
-		for (int layer = 0; layer < layersCount; layer++) {
-			weights[layer].free();
-			biases[layer].free();
-		}
-		delete trainingContext;
-		trainingContext = 0;
-		delete[]weights;
-		delete[]biases;
-		delete[]layerSizes;
-		weights = biases = 0;
-		layerSizes = 0;
-		layersCount = 0;
-	}
-}
-
-void NeuralNetwork::propagate(TrainingSamples* samples, int* outputs) const {
-	int batchSize;
-	samples->rewind();
-	int size = samples->size();
-	for (int batchOffset = 0; batchOffset < size; batchOffset += batchSize)
-	{
-		batchSize = samples->inputs.slide(batchOffset, samples->batchSize);
-		trainingContext->setBatchSize(batchSize);
-		trainingContext->forward(samples->inputs);
-		trainingContext->getOutputIndices(outputs, batchOffset);
-	}
-}
-
-double NeuralNetwork::evaluate(TrainingSamples* samples, int* outputs) const {
-	int batchSize;
-	double total = 0;
-	int matched = 0;
-	samples->rewind();
-	int size = samples->size();
-	for (int batchOffset = 0; batchOffset < size; batchOffset += batchSize)
-	{
-		batchSize = samples->slide(batchOffset, samples->batchSize);
-		trainingContext->setBatchSize(batchSize);
-		trainingContext->forward(samples->inputs);
-		matched += trainingContext->getOutputIndices(samples->expectedIndices, outputs, batchOffset);
-	}
-	return matched / (double)size;
-}
-
-void NeuralNetwork::train(TrainingSamples* samples, double learningRate) {
-	int batchSize;
-	samples->rewind();
-	int size = samples->size();
-	for (int batchOffset = 0; batchOffset < size; batchOffset += batchSize)
-	{
-		batchSize = samples->slide(batchOffset, samples->batchSize);
-		trainingContext->setBatchSize(batchSize);
-
-		// forward propagation
-		trainingContext->forward(samples->inputs);
-
-		//cost derivative
-		trainingContext->activation(-1)->sub(samples->expectedOutputs);
-
-		// back propagation
-		trainingContext->backward(layersCount - 1, *trainingContext->activation(-2));
-		for (int layer = layersCount - 2; layer > 0; layer--)
-		{
-			trainingContext->backward(layer, *trainingContext->activation(layer - 1));
-		}
-		trainingContext->backward(0, samples->inputs);
-
-		// model update
-		double lr = learningRate / batchSize;
-		for (int layer = 0; layer < layersCount; layer++)
-		{
-			trainingContext->updateNetwork(layer, lr);
-		}
-	}
-}
-
-
-TrainingContext::TrainingContext(NeuralNetwork* _network) {
-	network = _network;
-	int layers = network->layers();
-	zs = new Matrix[layers];
-	activations = new Matrix[layers];
-	wgrads = new Matrix[layers];
-	bgrads = new Matrix[layers];
-	for (int layer = 0; layer < layers; layer++)
-	{
-		wgrads[layer].create(network->neurons(layer), network->features(layer));
-		bgrads[layer].create(network->neurons(layer), 1);
-	}
-}
-
-TrainingContext::~TrainingContext() {
 	for (int layer = 0; layer < layers(); layer++)
 	{
-		zs[layer].free();
-		activations[layer].free();
-		wgrads[layer].free();
-		bgrads[layer].free();
+		delete[]zs[layer];
+		delete[]activations[layer];
+		delete[]wgrads[layer];
+		delete[]bgrads[layer];
 	}
 	delete[]zs;
 	delete[]activations;
 	delete[]wgrads;
 	delete[]bgrads;
-	network = 0;
+	delete[]weights;
+	delete[]biases;
 }
 
-void TrainingContext::setBatchSize(int _batchSize) {
-	if (batchSize != _batchSize) {
-		if (batchSize < _batchSize) {
+void NeuralNetwork::ensureCapacity(int newCapacity) {
+	if (capacity < newCapacity) {
+		if (capacity) {
 			for (int layer = 0; layer < layers(); layer++)
 			{
-				int neurons = network->neurons(layer);
-				zs[layer].free();
-				zs[layer].create(neurons, _batchSize);
-				activations[layer].free();
-				activations[layer].create(neurons, _batchSize);
+				delete[]zs[layer];
+				delete[]activations[layer];
 			}
 		}
-		else {
-			for (int layer = 0; layer < layers(); layer++)
-			{
-				zs[layer].columns = _batchSize;
-				activations[layer].columns = _batchSize;
-			}
-		}
-		batchSize = _batchSize;
-	}
-}
-
-void TrainingContext::forward(Matrix& inputs) {
-	forward(0, inputs);
-	for (int layer = 1; layer < layers(); layer++)
-	{
-		forward(layer, activations[layer - 1]);
-	}
-}
-
-void TrainingContext::forward(int layer, Matrix& inputs) {
-	// weight . inputs + bias
-	Matrix* weight = network->weight(layer);
-	Matrix* bias = network->bias(layer);
-	for (int tr = 0; tr < zs[layer].rows; tr++) {
-		for (int tc = 0; tc < zs[layer].columns; tc++) {
-			double s = 0;
-			double* icol = inputs.column(tc);
-			for (int c = 0; c < weight->columns; c++) {
-				s += weight->get(tr, c) * icol[c];
-			}
-			s += bias->get(tr, 0);
-			zs[layer].set(tr, tc, s);
-			activations[layer].set(tr, tc, sigmoid(s));
-		}
-	}
-}
-
-void TrainingContext::backward(int layer, Matrix& inputs) {
-	Matrix z = zs[layer];
-	Matrix a = activations[layer];
-	Matrix bgrad = bgrads[layer];
-	Matrix wgrad = wgrads[layer];
-
-	// delta = activation * sigmoid_prime(z) , bgrad = sum(activations[r])
-	bgrad.zero();
-	for (int c = 0; c < z.columns; c++)
-	{
-		double* zcolumn = z.column(c);
-		double* acolumn = a.column(c);
-		for (int r = 0; r < z.rows; r++)
+		for (int layer = 0; layer < layers(); layer++)
 		{
-			acolumn[r] *= sigmoid_prime(zcolumn[r]);
-			bgrad.data[r] += acolumn[r];
+			zs[layer] = newMatrix(neurons(layer), newCapacity);
+			activations[layer] = newMatrix(neurons(layer), newCapacity);
+		}
+	}
+}
+
+
+void NeuralNetwork::propagate(const TrainingSamples& samples, int* outputs) {
+	TrainingBatch batch(samples);
+	while (batch.hasNext()) {
+		forward(batch);
+		indexOutputs(batch, outputs);
+		batch.next();
+	}
+}
+
+double NeuralNetwork::evaluate(const TrainingSamples& samples, int* outputs) {
+	TrainingBatch batch(samples);
+	int matched = 0;
+	while (batch.hasNext()) {
+		forward(batch);
+		matched += indexOutputs(batch, outputs);
+		batch.next();
+	}
+	return matched / (double)samples.size;
+}
+
+void NeuralNetwork::train(const TrainingSamples& samples, double learningRate) {
+	TrainingBatch batch(samples);
+	while (batch.hasNext()) {
+		train(batch, learningRate);
+		batch.next();
+	}
+}
+
+void NeuralNetwork::forward(TrainingBatch& batch) {
+	ensureCapacity(batch.size);
+	const double* inputs = batch.inputs();
+	for (int layer = 0; layer < layers(); layer++)
+	{
+		// weight . inputs + bias
+		int neurons = this->neurons(layer);
+		int features = this->features(layer);
+		const double* w = weights[layer];
+		const double* b = biases[layer];
+		double* z = zs[layer];
+		double* a = activations[layer];
+		for (int neuron = 0; neuron < neurons; neuron++) {
+			for (int sample = 0; sample < batch.size; sample++) {
+				double s = 0;
+				for (int feature = 0; feature < features; feature++) {
+					s += w[feature * neurons + neuron] * inputs[sample * features + feature];
+				}
+				s += b[neuron];
+				z[sample * features + neuron] = s;
+				a[sample * features + neuron] = sigmoid(s);
+			}
+		}
+		inputs = a;
+	}
+}
+
+void NeuralNetwork::train(TrainingBatch& batch, double learningRate) {
+	// forward propagation
+	forward(batch);
+
+	//cost derivative
+	double* a = activations[layersCount - 1];
+	int neurons = outputs();
+	for (int sample = 0; sample < batch.size; sample++)
+	{
+		for (int neuron = 0; neuron < neurons; neuron++) {
+			a[sample * neurons + neuron] -= batch.expectedIndex(sample) == neuron ? 1 : 0;
 		}
 	}
 
-	// wgrad = delta . T(inputs)
-	for (int r = 0; r < wgrad.rows; r++)
+	// back propagation
+	int layer = layersCount - 1;
+	for (layer = layersCount - 1; layer > 0; layer--)
 	{
-		for (int c = 0; c < wgrad.columns; c++) {
+		backward(layer, activations[layer - 1], batch.size);
+	}
+	backward(0, batch.inputs(), batch.size);
+
+	// model update
+	double lr = learningRate / batch.size;
+	for (int layer = 0; layer < layersCount; layer++)
+	{
+		updateNetwork(layer, lr);
+	}
+}
+
+int NeuralNetwork::indexOutputs(TrainingBatch& batch, int* outputsIndices) {
+	int matched = 0;
+	double* networkOutputs = activations[layersCount - 1];
+	int outputsCount = outputs();
+	for (int sample = 0; sample < batch.size; sample++)
+	{
+		int outputIndex = maxIndex(networkOutputs - (size_t) sample * outputsCount, outputsCount);
+		if (outputIndex == batch.expectedIndex(sample))
+			matched++;
+		if (outputsIndices)
+			outputsIndices[batch.offset + sample] = outputIndex;
+	}
+	return matched;
+}
+
+void NeuralNetwork::backward(int layer, const double* inputs, int samples) {
+	int neurons = this->neurons(layer);
+	int features = this->features(layer);
+	double* z = zs[layer];
+	double* a = activations[layer];
+	double* bgrad = bgrads[layer];
+	double* wgrad = wgrads[layer];
+
+	// delta = activation * sigmoid_prime(z) 
+	for (int sample = 0; sample < samples; sample++) {
+		for (int neuron = 0; neuron < neurons; neuron++) {
+			int offset = sample * neurons + neuron;
+			a[offset] *= sigmoid_prime(z[offset]);
+		}
+	}
+
+	// bgrad = sum(activations[r])
+	for (int neuron = 0; neuron < neurons; neuron++) {
+		double s = 0;
+		for (int sample = 0; sample < samples; sample++) {
+			s += a[sample * neurons + neuron];
+		}
+		bgrad[neuron] = s;
+	}
+	
+	// wgrad = a . T(inputs)
+	for (int neuron = 0; neuron < neurons; neuron++) {
+		for (int feature = 0; feature < features; feature++) {
 			double s = 0;
-			for (int dc = 0; dc < a.columns; dc++) {
-				s += a.get(r, dc) * inputs.get(c, dc);
+			for (int sample = 0; sample < samples; sample++) {
+				s += a[sample * neurons + neuron] * inputs[sample * features + neuron];
 			}
-			wgrad.set(r, c, s);
+			wgrad[feature * neurons + neuron] = s;
 		}
 	}
 
 	if (layer > 0) {
-		// delta[layer-1] = T(W[layer]) . delta 
-		Matrix* next = activation(layer - 1);
-		Matrix* weight = network->weight(layer);
-		for (int r = 0; r < next->rows; r++)
+		// activations[layer - 1] = T(weights[layer]) . a 
+		double* nexta = activations[layer - 1];
+		double* weight = weights[layer];
+		for (int feature = 0; feature < features; feature++)
 		{
-			double* wcol = weight->column(r);
-			for (int c = 0; c < next->columns; c++) {
+			for (int sample = 0; sample < samples; sample++) {
 				double s = 0;
-				double* dcol = a.column(c);
-				for (int wr = 0; wr < weight->rows; wr++) {
-					s += wcol[wr] * dcol[wr];
+				for (int neuron = 0; neuron < neurons; neuron++) {
+					s += weight[feature * neurons + neuron] * a[sample * neurons + neuron];
 				}
-				next->set(r, c, s);
+				nexta[feature * features + sample] = s;
 			}
 		}
 	}
 }
 
-void TrainingContext::updateNetwork(int layer, double lr) {
+void NeuralNetwork::updateNetwork(int layer, double lr) {
 	// w = w - (learningRate/batchSize) * wgrad
-	wgrads[layer].mul(lr);
-	network->weight(layer)->sub(wgrads[layer]);
+	int neurons = this->neurons(layer);
+	int features = this->features(layer);
+	double* weight = weights[layer];
+	double* wgrad = wgrads[layer];
+	for (int feature = 0; feature < features; feature++) {
+		for (int neuron = 0; neuron < neurons; neuron++) {
+			int offset = feature * neurons + neuron;
+			weight[offset] -= lr * wgrad[offset];
+		}
+	}
 	// b = b - (learningRate/batchSize) * bgrad
-	bgrads[layer].mul(lr);
-	network->bias(layer)->sub(bgrads[layer]);
-}
-
-void TrainingContext::getOutputIndices(int* outputs, int outputsOffset) const {
-	Matrix* activation = &activations[network->layers() - 1];
-	for (int s = 0; s < batchSize; s++)
-	{
-		int index = activation->maxRowIndex(s);
-		outputs[outputsOffset + s] = index;
+	double* bias = biases[layer];
+	double* bgrad = bgrads[layer];
+	for (int neuron = 0; neuron < neurons; neuron++) {
+		bias[neuron] -= bgrad[neuron];
 	}
-}
-
-int TrainingContext::getOutputIndices(Matrix& expecteds, int* outputs, int outputsOffset) const {
-	Matrix* activation = &activations[layers() - 1];
-	int matched = 0;
-	for (int s = 0; s < batchSize; s++)
-	{
-		int index = activation->maxRowIndex(s);
-		if (expecteds.get(0, s) == index)
-			matched++;
-		if (outputs)
-			outputs[outputsOffset + s] = index;
-	}
-	return matched;
 }
 
 /*
@@ -348,14 +310,15 @@ int TrainingContext::getOutputIndices(Matrix& expecteds, int* outputs, int outpu
  * Method:    create
  * Signature: ([I)J
  */
- //JNIEXPORT jlong JNICALL Java_org_yah_tests_perceptron_jni_NativeNeuralNetwork_create(JNIEnv*, jclass, jintArray);
-JNIEXPORT jlong JNICALL Java_org_yah_tests_perceptron_jni_NativeNeuralNetwork_create(JNIEnv* env, jclass, jintArray _layerSizes) {
-	int sizeCount = env->GetArrayLength(_layerSizes);
-	if (sizeCount < 2) return 0;
-
-	int* layerSizes = new int[sizeCount];
-	env->GetIntArrayRegion(_layerSizes, 0, sizeCount, (jint*)layerSizes);
-	return (jlong)new NeuralNetwork(sizeCount - 1, layerSizes);
+JNIEXPORT jlong JNICALL Java_org_yah_tests_perceptron_jni_NativeNeuralNetwork_create(JNIEnv* env, jclass, jobject _stateBuffer) {
+	StreamBuffer sb(env, _stateBuffer);
+	int layersCount;
+	if (!sb.next(layersCount))
+		return 0;
+	int* layerSizes;
+	if (!sb.array(layerSizes, layersCount + 1))
+		return 0;
+	return (jlong) new NeuralNetwork(layersCount, layerSizes, (double*) sb.address());
 }
 
 /*
@@ -367,92 +330,27 @@ JNIEXPORT void JNICALL Java_org_yah_tests_perceptron_jni_NativeNeuralNetwork_del
 	delete ((NeuralNetwork*)networkReference);
 }
 
-/*
- * Class:     org_yah_tests_perceptron_jni_NativeNeuralNetwork
- * Method:    layers
- * Signature: (J)I
- */
-JNIEXPORT jint JNICALL Java_org_yah_tests_perceptron_jni_NativeNeuralNetwork_layers(JNIEnv*, jclass, jlong networkReference) {
-	return ((NeuralNetwork*)networkReference)->layers();
-}
-
-
-/*
- * Class:     org_yah_tests_perceptron_jni_NativeNeuralNetwork
- * Method:    features
- * Signature: (J)I
- */
-JNIEXPORT jint JNICALL Java_org_yah_tests_perceptron_jni_NativeNeuralNetwork_features__J(JNIEnv*, jclass, jlong networkReference) {
-	return ((NeuralNetwork*)networkReference)->features();
-}
-
-
-/*
- * Class:     org_yah_tests_perceptron_jni_NativeNeuralNetwork
- * Method:    outputs
- * Signature: (J)I
- */
-JNIEXPORT jint JNICALL Java_org_yah_tests_perceptron_jni_NativeNeuralNetwork_outputs(JNIEnv*, jclass, jlong networkReference) {
-	return ((NeuralNetwork*)networkReference)->outputs();
-}
-
-
-/*
- * Class:     org_yah_tests_perceptron_jni_NativeNeuralNetwork
- * Method:    features
- * Signature: (JI)I
- */
-JNIEXPORT jint JNICALL Java_org_yah_tests_perceptron_jni_NativeNeuralNetwork_features__JI(JNIEnv*, jclass, jlong networkReference, jint layer) {
-	return ((NeuralNetwork*)networkReference)->features(layer);
-}
-
-
-/*
- * Class:     org_yah_tests_perceptron_jni_NativeNeuralNetwork
- * Method:    neurons
- * Signature: (JI)I
- */
-JNIEXPORT jint JNICALL Java_org_yah_tests_perceptron_jni_NativeNeuralNetwork_neurons(JNIEnv*, jclass, jlong networkReference, jint layer) {
-	return ((NeuralNetwork*)networkReference)->neurons(layer);
-}
-
-/*
- * Class:     org_yah_tests_perceptron_jni_NativeNeuralNetwork
- * Method:    propagate
- * Signature: (JJLjava/nio/IntBuffer;)V
- */
-JNIEXPORT void JNICALL Java_org_yah_tests_perceptron_jni_NativeNeuralNetwork_propagate(JNIEnv* env, jclass, jlong networkReference, jlong samplesReference, jobject javaOutputs) {
+JNIEXPORT void JNICALL Java_org_yah_tests_perceptron_jni_NativeNeuralNetwork_propagate(JNIEnv* env, jclass, jlong networkReference, jobject _samplesBuffer, jobject _outputsBuffer) {
 	NeuralNetwork* network = (NeuralNetwork*)networkReference;
-	TrainingSamples* samples = (TrainingSamples*)samplesReference;
-	int* outputs = (int*)env->GetDirectBufferAddress(javaOutputs);
-	network->propagate(samples, outputs);
+	TrainingSamples* samples = (TrainingSamples*)env->GetDirectBufferAddress(_samplesBuffer);
+	int* outputs = (int*)env->GetDirectBufferAddress(_outputsBuffer);
+	network->propagate(*samples, outputs);
 }
 
-
-/*
- * Class:     org_yah_tests_perceptron_jni_NativeNeuralNetwork
- * Method:    evaluate
- * Signature: (JJLjava/nio/IntBuffer;)D
- */
-JNIEXPORT jdouble JNICALL Java_org_yah_tests_perceptron_jni_NativeNeuralNetwork_evaluate(JNIEnv* env, jclass, jlong networkReference, jlong samplesReference, jobject javaOutputs) {
+JNIEXPORT jdouble JNICALL Java_org_yah_tests_perceptron_jni_NativeNeuralNetwork_evaluate(JNIEnv* env, jclass, jlong networkReference, jobject _samplesBuffer, jobject _outputsBuffer) {
 	NeuralNetwork* network = (NeuralNetwork*)networkReference;
-	TrainingSamples* samples = (TrainingSamples*)samplesReference;
-	int* outputs = javaOutputs ? (int*)env->GetDirectBufferAddress(javaOutputs) : 0;
-	return network->evaluate(samples, outputs);
+	TrainingSamples* samples = (TrainingSamples*)env->GetDirectBufferAddress(_samplesBuffer);
+	int* outputs = _outputsBuffer ? (int*)env->GetDirectBufferAddress(_outputsBuffer) : 0;
+	return network->evaluate(*samples, outputs);
 }
-
 
 /*
  * Class:     org_yah_tests_perceptron_jni_NativeNeuralNetwork
  * Method:    train
  * Signature: (JJD)V
  */
-JNIEXPORT void JNICALL Java_org_yah_tests_perceptron_jni_NativeNeuralNetwork_train(JNIEnv*, jclass, jlong networkReference, jlong samplesReference, jdouble learningRate) {
+JNIEXPORT void JNICALL Java_org_yah_tests_perceptron_jni_NativeNeuralNetwork_train(JNIEnv* env, jclass, jlong networkReference, jobject _samplesBuffer, jdouble learningRate) {
 	NeuralNetwork* network = (NeuralNetwork*)networkReference;
-	TrainingSamples* samples = (TrainingSamples*)samplesReference;
-	network->train(samples, learningRate);
-}
-
-JNIEXPORT void JNICALL Java_org_yah_tests_perceptron_jni_NativeNeuralNetwork_seed(JNIEnv*, jclass, jlong seed) {
-	generator.seed(seed);
+	TrainingSamples* samples = (TrainingSamples*)env->GetDirectBufferAddress(_samplesBuffer);
+	network->train(*samples, learningRate);
 }

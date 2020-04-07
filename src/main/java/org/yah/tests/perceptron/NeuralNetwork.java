@@ -1,49 +1,26 @@
 package org.yah.tests.perceptron;
 
-import java.nio.ByteBuffer;
-import java.nio.DoubleBuffer;
-import java.nio.IntBuffer;
+import org.yah.tests.perceptron.SamplesProviders.SamplesProvider;
+import org.yah.tests.perceptron.SamplesProviders.TrainingSamplesProvider;
 
-public interface NeuralNetwork {
+public interface NeuralNetwork extends NeuralNetworkState {
 
-    int layers();
+    NeuralNetworkState getState();
 
-    int features();
+    InputSamples createInputs(SamplesProvider provider, int batchSize);
 
-    int outputs();
+    TrainingSamples createTraining(TrainingSamplesProvider provider, int batchSize);
 
-    int features(int layer);
+    NetworkOutputs createOutpus(int samples);
 
-    int neurons(int layer);
+    void propagate(InputSamples samples, NetworkOutputs outputs);
 
-    SamplesSource createSampleSource();
-
-    void propagate(InputSamples samples, int[] outputs);
-
-    void propagate(InputSamples samples, IntBuffer outputs);
+    double evaluate(TrainingSamples samples, NetworkOutputs outputs);
 
     default double evaluate(TrainingSamples samples) {
-        return evaluate(samples, (IntBuffer) null);
+        return evaluate(samples, null);
     }
-
-    double evaluate(TrainingSamples samples, int[] outputs);
-
-    double evaluate(TrainingSamples samples, IntBuffer outputs);
 
     void train(TrainingSamples samples, double learningRate);
 
-    void snapshot(int layer, DoubleBuffer buffer);
-
-    default ByteBuffer snapshot() {
-        int totalSize = 0;
-        for (int layer = 0; layer < layers(); layer++) {
-            totalSize += neurons(layer) * features(layer) + neurons(layer);
-        }
-        ByteBuffer res = ByteBuffer.allocate(totalSize * Double.BYTES);
-        DoubleBuffer buffer = res.asDoubleBuffer();
-        for (int layer = 0; layer < layers(); layer++) {
-            snapshot(layer, buffer);
-        }
-        return res;
-    }
 }

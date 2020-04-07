@@ -2,11 +2,6 @@ package org.yah.tests.perceptron.matrix;
 
 public interface Matrix<M extends Matrix<M>> {
 
-    @FunctionalInterface
-    interface MatrixFunction {
-        double apply(int row, int column, double value);
-    }
-
     M self();
 
     int rows();
@@ -15,9 +10,9 @@ public interface Matrix<M extends Matrix<M>> {
 
     double get(int row, int col);
 
-    void apply(MatrixFunction func);
+    void set(int row, int col, double value);
 
-    void zero();
+    void apply(MatrixFunction func);
 
     default void sub(M b) {
         sub(b, self());
@@ -89,7 +84,6 @@ public interface Matrix<M extends Matrix<M>> {
     }
 
     int maxRowIndex(int column);
-    
 
     int slide(int offset, int columns);
 

@@ -1,13 +1,16 @@
 package org.yah.tests.perceptron;
 
 import org.yah.tests.perceptron.SamplesProviders.TrainingSamplesProvider;
+import org.yah.tests.perceptron.base.DefaultNetworkState;
 import org.yah.tests.perceptron.jni.NativeNeuralNetwork;
 import org.yah.tests.perceptron.matrix.MatrixNeuralNetwork;
 import org.yah.tests.perceptron.matrix.array.CMArrayMatrix;
 import org.yah.tests.perceptron.mt.MTNeuralNetwork;
 import org.yah.tests.perceptron.opencl.CLNeuralNetwork;
 
-public class NeuralNetworkSandbox implements AutoCloseable {
+import java.io.IOException;
+
+public class NeuralNetworkSandbox {
 
     static {
         Runtime.getRuntime().loadLibrary("neuralnetwork");
@@ -16,47 +19,28 @@ public class NeuralNetworkSandbox implements AutoCloseable {
     private static final long LOG_INTERVAL = 1000;
     private static final double NS_MS = 1E-6;
 
-    private NeuralNetwork network;
-    private SamplesSource samplesSource;
+    static final double[][] INPTUS = new double[][]{{0, 0}, {0, 1}, {1, 0}, {1, 1}};
 
-    private NeuralNetworkSandbox(NeuralNetwork network) {
-        this.network = network;
-        samplesSource = network.createSampleSource();
-    }
+    static final TrainingSamplesProvider NAND = SamplesProviders.newTrainingProvider(
+            INPTUS, false,
+            new int[]{1, 1, 1, 0});
+    static final TrainingSamplesProvider XOR = SamplesProviders.newTrainingProvider(
+            INPTUS, false,
+            new int[]{0, 1, 1, 0});
+    static final TrainingSamplesProvider AND = SamplesProviders.newTrainingProvider(
+            INPTUS, false,
+            new int[]{0, 0, 0, 1});
+    static final TrainingSamplesProvider OR = SamplesProviders.newTrainingProvider(
+            INPTUS, false,
+            new int[]{0, 1, 1, 1});
 
-    @Override
-    public void close() throws Exception {
-        if (network instanceof AutoCloseable)
-            ((AutoCloseable) network).close();
-    }
-
-    public void runXOR() {
-        run(new double[][] { { 0, 0 }, { 0, 1 }, { 1, 0 }, { 1, 1 } }, new int[] { 0, 1, 1, 0 });
-    }
-
-    public void runNAND() {
-        run(new double[][] { { 0, 0 }, { 0, 1 }, { 1, 0 }, { 1, 1 } }, new int[] { 1, 1, 1, 0 });
-    }
-
-    public void runAND() {
-        run(new double[][] { { 0, 0 }, { 0, 1 }, { 1, 0 }, { 1, 1 } }, new int[] { 0, 0, 0, 1 });
-    }
-
-    public void runOR() {
-        run(new double[][] { { 0, 0 }, { 0, 1 }, { 1, 0 }, { 1, 1 } }, new int[] { 0, 1, 1, 1 });
-    }
-
-    public void runSingle() {
-        run(new double[][] { { 0, 1 } }, new int[] { 1 });
-    }
-
-    /** @noinspection InfiniteLoopStatement*/
-    public void run(double[][] inputs, int[] outputIndices) {
-        TrainingSamplesProvider provider = SamplesProviders.newTrainingProvider(inputs, false,
-                outputIndices);
+    /**
+     * @noinspection InfiniteLoopStatement
+     */
+    public void run(NeuralNetwork network, TrainingSamplesProvider provider) {
         TrainingSamples samples = null;
         try {
-            samples = samplesSource.createTraining(provider, 0);
+            samples = network.createTraining(provider, 2);
             double last = network.evaluate(samples);
             long trainingTime = 0;
             long evaluationTime = 0;
@@ -65,7 +49,7 @@ public class NeuralNetworkSandbox implements AutoCloseable {
             long lastLog = System.nanoTime();
             while (true) {
                 long start = System.nanoTime();
-                network.train(samples, 0.1f);
+                network.train(samples, 0.1);
                 trainingTime += System.nanoTime() - start;
 
                 start = System.nanoTime();
@@ -101,29 +85,36 @@ public class NeuralNetworkSandbox implements AutoCloseable {
     }
 
     public static void main(String[] args) throws Exception {
-        int[] layers = new int[] { 2, 2, 2 };
-        NeuralNetwork network = null;
-        if (args.length > 0) {
-            switch (args[0]) {
-            case "native":
-                network = new NativeNeuralNetwork(layers);
-                break;
-            case "cl":
-                network = new CLNeuralNetwork(layers);
-                break;
-            case "mt":
-                network = new MTNeuralNetwork(layers);
-                break;
-            case "matrix":
-                network = new MatrixNeuralNetwork<>(CMArrayMatrix::new, layers);
-            }
-        }
-        if (network == null)
-            network = new MatrixNeuralNetwork<>(CMArrayMatrix::new, layers);
+        // dump(new MatrixNeuralNetwork<>(CMArrayMatrix::new, new DefaultNetworkState(RandomUtils.newRandomSource(12356), 2, 3, 3)));
+        run(args);
+        //compare();
+    }
 
-        try (NeuralNetworkSandbox sb = new NeuralNetworkSandbox(network)) {
-            sb.runNAND();
-            // sb.runSingle();
+    private static void run(String[] args) throws Exception {
+        NeuralNetworkState state = new DefaultNetworkState(RandomUtils.newRandomSource(), 2, 2, 2);
+        NeuralNetwork network = null;
+        String type = args.length > 0 ? args[0] : "matrix";
+        try {
+            switch (args[0]) {
+                case "native":
+                    network = new NativeNeuralNetwork(state);
+                    break;
+                case "cl":
+                    network = new CLNeuralNetwork(state);
+                    break;
+                case "mt":
+                    network = new MTNeuralNetwork(state);
+                    break;
+                case "matrix":
+                    network = new MatrixNeuralNetwork<>(CMArrayMatrix::new, state);
+                    break;
+                default:
+                    throw new IllegalArgumentException("Invalid type " + type);
+            }
+            new NeuralNetworkSandbox().run(network, NAND);
+        } finally {
+            if (network instanceof AutoCloseable)
+                ((AutoCloseable) network).close();
         }
     }
 }

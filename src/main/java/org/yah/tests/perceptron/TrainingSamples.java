@@ -5,5 +5,4 @@ package org.yah.tests.perceptron;
  *
  */
 public interface TrainingSamples extends InputSamples {
-
 }

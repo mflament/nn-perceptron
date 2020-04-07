@@ -1,13 +1,11 @@
 package org.yah.tests.perceptron.matrix.array;
 
-import java.util.Arrays;
-
 import org.yah.tests.perceptron.Activation;
 import org.yah.tests.perceptron.matrix.Matrix;
+import org.yah.tests.perceptron.matrix.MatrixFunction;
 
 /**
  * @author Yah
- *
  */
 public class RMArrayMatrix implements Matrix<RMArrayMatrix> {
 
@@ -21,8 +19,6 @@ public class RMArrayMatrix implements Matrix<RMArrayMatrix> {
         this.columns = columns;
     }
 
-    /**
-     */
     public RMArrayMatrix(double[][] _data) {
         int rows = _data[0].length;
         columns = _data.length;
@@ -76,14 +72,6 @@ public class RMArrayMatrix implements Matrix<RMArrayMatrix> {
             for (int c = 0; c < columns; c++) {
                 row[c + colOffset] = func.apply(r, c, row[c + colOffset]);
             }
-        }
-    }
-
-    @Override
-    public void zero() {
-        int lastCol = colOffset + columns;
-        for (double[] datum : data) {
-            Arrays.fill(datum, colOffset, lastCol, 0);
         }
     }
 
@@ -198,6 +186,11 @@ public class RMArrayMatrix implements Matrix<RMArrayMatrix> {
     @Override
     public double get(int row, int col) {
         return data[row][col + colOffset];
+    }
+
+    @Override
+    public void set(int row, int col, double value) {
+        data[row][col + colOffset] = value;
     }
 
     @Override

@@ -5,7 +5,6 @@ import org.yah.tests.perceptron.SamplesProviders.TrainingSamplesProvider;
 
 /**
  * @author Yah
- *
  */
 class AllFlowersProvider implements TrainingSamplesProvider {
 
@@ -15,9 +14,13 @@ class AllFlowersProvider implements TrainingSamplesProvider {
     private final OpenSimplexNoise noise;
 
     public AllFlowersProvider(int width, int height, double noiseScale) {
+        this(width, height, width * height, noiseScale);
+    }
+
+    public AllFlowersProvider(int width, int height, int samples, double noiseScale) {
         this.width = width;
         this.height = height;
-        this.samples = width * height;
+        this.samples = samples;
         this.noiseScale = noiseScale;
         noise = new OpenSimplexNoise(RandomUtils.SEED < 0 ? System.currentTimeMillis() : RandomUtils.SEED);
     }

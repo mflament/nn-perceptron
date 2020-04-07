@@ -1,43 +1,25 @@
 package org.yah.tests.perceptron.mt;
 
-import java.nio.DoubleBuffer;
-import java.nio.IntBuffer;
-import java.util.Arrays;
-import java.util.Iterator;
-
 import org.yah.tests.perceptron.Activation;
-import org.yah.tests.perceptron.InputSamples;
-import org.yah.tests.perceptron.NeuralNetwork;
-import org.yah.tests.perceptron.RandomUtils;
-import org.yah.tests.perceptron.SamplesSource;
-import org.yah.tests.perceptron.TrainingSamples;
+import org.yah.tests.perceptron.NeuralNetworkState;
+import org.yah.tests.perceptron.base.AbstractBatchedNeuralNetwork;
+import org.yah.tests.perceptron.base.ArrayNetworkOutputs;
+import org.yah.tests.perceptron.base.SamplesSource;
 import org.yah.tests.perceptron.mt.ChunkExecutor.ChunkHandler;
-import org.yah.tests.perceptron.mt.MTSamplesSource.MTBatch;
-import org.yah.tests.perceptron.mt.MTSamplesSource.MTTrainingSamples;
 
 /**
  * @author Yah
- *
  */
-public class MTNeuralNetwork implements NeuralNetwork, AutoCloseable {
+public final class MTNeuralNetwork extends AbstractBatchedNeuralNetwork<MTBatch, ArrayNetworkOutputs> implements AutoCloseable {
 
-    private final int[] layerSizes;
-    private final int layers;
     private final ChunkExecutor executor;
 
     private final MTMatrix[] weights;
     private final MTMatrix[] biases;
-
     private final MTMatrix[] zs;
     private final MTMatrix[] activations;
     private final MTMatrix[] wgrads;
     private final MTMatrix[] bgrads;
-
-    private final MTMatrix outputsMatrix;
-
-    private final int totalWeights;
-
-    private int[] batchOutputs;
 
     private final ForwardHandler forwardHandler = new ForwardHandler();
     private final CostDerivativeHandler costHandler = new CostDerivativeHandler();
@@ -48,11 +30,9 @@ public class MTNeuralNetwork implements NeuralNetwork, AutoCloseable {
 
     private final MTMatrix transposed = new MTMatrix();
 
-    public MTNeuralNetwork(int... layerSizes) {
-        if (layerSizes.length < 2)
-            throw new IllegalArgumentException("Invalid layers counts " + layerSizes.length);
-        this.layerSizes = layerSizes;
-        layers = layerSizes.length - 1;
+    public MTNeuralNetwork(NeuralNetworkState state) {
+        super(state);
+        int layers = layers();
         executor = new ChunkExecutor(Runtime.getRuntime().availableProcessors());
         weights = new MTMatrix[layers];
         biases = new MTMatrix[layers];
@@ -60,42 +40,31 @@ public class MTNeuralNetwork implements NeuralNetwork, AutoCloseable {
         activations = new MTMatrix[layers];
         wgrads = new MTMatrix[layers];
         bgrads = new MTMatrix[layers];
-        int tw = 0;
         for (int layer = 0; layer < layers; layer++) {
             int neurons = neurons(layer);
             int features = features(layer);
             weights[layer] = new MTMatrix(neurons, features);
-            randomize(weights[layer], Math.sqrt(2.0 / features));
+            copyWeights(layer);
             biases[layer] = new MTMatrix(neurons, 1);
-            tw += weights[layer].size();
-
+            copyBiases(layer);
             zs[layer] = new MTMatrix();
             activations[layer] = new MTMatrix();
             wgrads[layer] = new MTMatrix(neurons, features);
             bgrads[layer] = new MTMatrix(neurons, 1);
         }
-        totalWeights = tw;
-        outputsMatrix = activations[layers - 1];
     }
 
-    @Override
-    public void snapshot(int layer, DoubleBuffer buffer) {
-        int neurons = neurons(layer);
-        int features = features(layer);
-        for (int n = 0; n < neurons; n++) {
-            for (int f = 0; f < features; f++) {
-                buffer.put(weights[layer].get(n, f));
+    private void copyWeights(int layer) {
+        for (int neuron = 0; neuron < neurons(layer); neuron++) {
+            for (int feature = 0; feature < features(layer); feature++) {
+                weights[layer].set(neuron, feature, state.weight(layer, neuron, feature));
             }
         }
-        for (int n = 0; n < neurons; n++) {
-            buffer.put(biases[layer].get(n, 0));
-        }
     }
 
-    private void randomize(MTMatrix m, double q) {
-        int size = m.size();
-        for (int i = 0; i < size; i++) {
-            m.set(i, RandomUtils.nextGaussian() * q);
+    private void copyBiases(int layer) {
+        for (int neuron = 0; neuron < neurons(layer); neuron++) {
+            biases[layer].set(neuron, 0, state.bias(layer, neuron));
         }
     }
 
@@ -105,131 +74,79 @@ public class MTNeuralNetwork implements NeuralNetwork, AutoCloseable {
     }
 
     @Override
-    public int layers() {
-        return layers;
-    }
-
-    @Override
-    public int features() {
-        return layerSizes[0];
-    }
-
-    @Override
-    public int outputs() {
-        return layerSizes[layers];
-    }
-
-    @Override
-    public int features(int layer) {
-        return layerSizes[layer];
-    }
-
-    @Override
-    public int neurons(int layer) {
-        return layerSizes[layer + 1];
-    }
-
-    @Override
-    public SamplesSource createSampleSource() {
+    public SamplesSource<MTBatch> createSampleSource() {
         return new MTSamplesSource(this);
     }
 
     @Override
-    public void propagate(InputSamples samples, int[] outputIndices) {
-        assert outputIndices.length == samples.size();
-
-        MTTrainingSamples mtsamples = (MTTrainingSamples) samples;
-        for (MTBatch batch : mtsamples) {
-            forward(batch);
-            indexOutputs(null, outputIndices, batch.offset());
-        }
+    public ArrayNetworkOutputs createOutpus(int samples) {
+        return new ArrayNetworkOutputs(samples);
     }
 
     @Override
-    public void propagate(InputSamples samples, IntBuffer outputIndices) {
-        MTTrainingSamples mtsamples = (MTTrainingSamples) samples;
-        for (MTBatch batch : mtsamples) {
-            forward(batch);
-            prepareBatchOutputs(batch.batchSize());
-            indexOutputs(batch, batchOutputs, 0);
-            outputIndices.put(batchOutputs);
-        }
+    protected void propagate(MTBatch batch, ArrayNetworkOutputs outputs) {
+        MTMatrix outputsMatrix = forward(batch);
+        indexOutputs(outputsMatrix, batch, outputs);
     }
 
     @Override
-    public double evaluate(TrainingSamples samples, int[] outputIndices) {
-        MTTrainingSamples mtsamples = (MTTrainingSamples) samples;
-        Iterator<MTBatch> batchIter = mtsamples.iterator();
-        int matched = 0;
-        while (batchIter.hasNext()) {
-            MTBatch batch = batchIter.next();
-            forward(batch);
-            matched += indexOutputs(batch, outputIndices, batch.offset());
-        }
-        return matched / (double) samples.size();
+    protected int evaluate(MTBatch batch, ArrayNetworkOutputs outputs) {
+        MTMatrix outputsMatrix = forward(batch);
+        return indexOutputs(outputsMatrix, batch, outputs);
     }
 
     @Override
-    public double evaluate(TrainingSamples samples, IntBuffer outputIndices) {
-        MTTrainingSamples mtsamples = (MTTrainingSamples) samples;
-        Iterator<MTBatch> batchIter = mtsamples.iterator();
-        int matched = 0;
-        while (batchIter.hasNext()) {
-            MTBatch batch = batchIter.next();
-            forward(batch);
+    protected void train(MTBatch batch, double learningRate) {
+        // forward propagation
+        MTMatrix outputs = forward(batch);
 
-            if (outputIndices != null) {
-                prepareBatchOutputs(batch.batchSize());
-                matched += indexOutputs(batch, batchOutputs, 0);
-                outputIndices.put(batchOutputs);
-            } else
-                matched += indexOutputs(batch, null, 0);
+        // cost derivative = actual - expected
+        costHandler.prepare(outputs, batch);
+        executor.distribute(outputs.size(), costHandler);
+
+        // backward propagation
+        for (int layer = layers() - 1; layer > 0; layer--) {
+            backward(layer, activations[layer - 1]);
         }
-        return matched / (double) samples.size();
+        backward(0, batch.inputs);
+
+        // update model
+        modelUpdateHandler.prepare(learningRate / batch.size());
+        executor.distribute(totalWeights(), modelUpdateHandler);
     }
 
-    private int indexOutputs(MTBatch batch, int[] outputIndices, int indicesOffset) {
-        outputsIndexer.prepare(batch, outputIndices, indicesOffset);
+    @Override
+    protected void updateState() {
+        visitWeights((layer, neuron, feature) -> weight(layer, neuron, feature, weights[layer].get(neuron, feature)));
+        visitBiases((layer, neuron) -> bias(layer, neuron, biases[layer].get(neuron, 0)));
+    }
+
+    @Override
+    protected void updateModel() {
+        visitWeights((layer, neuron, feature) -> weights[layer].set(neuron, feature, weight(layer, neuron, feature)));
+        visitBiases((layer, neuron) -> biases[layer].set(neuron, 0, bias(layer, neuron)));
+    }
+
+    private int indexOutputs(MTMatrix outputsMatrix, MTBatch batch, ArrayNetworkOutputs networkOutputs) {
+        outputsIndexer.prepare(outputsMatrix, batch, networkOutputs);
         executor.distribute(outputsMatrix.columns(), outputsIndexer);
         return outputsIndexer.matched;
     }
 
-    @Override
-    public void train(TrainingSamples samples, double learningRate) {
-        MTTrainingSamples mtsamples = (MTTrainingSamples) samples;
-        for (MTBatch batch : mtsamples) {
-            // forward propagation
-            forward(batch);
-
-            // cost derivative = actual - expected
-            costHandler.prepare(batch.expectedOutputs());
-            executor.distribute(outputsMatrix.size(), costHandler);
-
-            // backward propagation
-            for (int layer = layers - 1; layer > 0; layer--) {
-                backward(layer, activations[layer - 1]);
-            }
-            backward(0, batch.inputs());
-
-            // update model
-            modelUpdateHandler.prepare(learningRate / batch.batchSize());
-            executor.distribute(totalWeights, modelUpdateHandler);
-        }
-    }
-
-    private void forward(MTBatch batch) {
-        prepareBatchSize(batch.batchSize());
-        MTMatrix inputs = batch.inputs();
-        for (int layer = 0; layer < layers; layer++) {
+    private MTMatrix forward(MTBatch batch) {
+        prepareBatchSize(batch.size());
+        MTMatrix inputs = batch.inputs;
+        for (int layer = 0; layer < layers(); layer++) {
             forwardHandler.prepare(inputs, layer);
             executor.distribute(activations[layer].size(), forwardHandler);
             inputs = forwardHandler.a;
         }
+        return inputs;
     }
 
     private void backward(int layer, MTMatrix inputs) {
         // activation = activation * sigmoid_prime(z)
-        sigmoidPrimeHandler.prepare(layer, bgrads[layer]);
+        sigmoidPrimeHandler.prepare(layer);
         executor.distribute(sigmoidPrimeHandler.a.size(), sigmoidPrimeHandler);
 
         // wgrad = delta . T(inputs)
@@ -247,19 +164,10 @@ public class MTNeuralNetwork implements NeuralNetwork, AutoCloseable {
     }
 
     private void prepareBatchSize(int batchSize) {
-        for (int layer = 0; layer < layers; layer++) {
+        for (int layer = 0; layer < layers(); layer++) {
             zs[layer].reshape(neurons(layer), batchSize);
             activations[layer].reshape(neurons(layer), batchSize);
         }
-    }
-
-    private int maxNeurons() {
-        return Arrays.stream(layerSizes, 1, layers).max().orElse(0);
-    }
-
-    private void prepareBatchOutputs(int batchSize) {
-        if (batchOutputs == null || batchOutputs.length < batchSize)
-            batchOutputs = new int[batchSize];
     }
 
     private static abstract class MatrixHandler implements ChunkHandler {
@@ -307,11 +215,11 @@ public class MTNeuralNetwork implements NeuralNetwork, AutoCloseable {
         }
     }
 
-    private class OutputsIndexer implements ChunkHandler {
+    private static class OutputsIndexer implements ChunkHandler {
         private MTBatch batch;
+        private MTMatrix outputsMatrix;
 
-        private int[] indices;
-        private int indicesOffset;
+        private ArrayNetworkOutputs outputsIndices;
 
         private int[] matcheds;
         private int matched;
@@ -322,10 +230,12 @@ public class MTNeuralNetwork implements NeuralNetwork, AutoCloseable {
                 this.matcheds = new int[chunksCount];
         }
 
-        public void prepare(MTBatch batch, int[] indices, int indicesOffset) {
+        public void prepare(MTMatrix outputsMatrix,
+                            MTBatch batch,
+                            ArrayNetworkOutputs outputsIndices) {
+            this.outputsMatrix = outputsMatrix;
             this.batch = batch;
-            this.indices = indices;
-            this.indicesOffset = indicesOffset;
+            this.outputsIndices = outputsIndices;
         }
 
         @Override
@@ -333,13 +243,11 @@ public class MTNeuralNetwork implements NeuralNetwork, AutoCloseable {
             int matched = 0;
             for (int c = 0; c < size; c++, offset++) {
                 int index = outputsMatrix.maxRowIndex(offset);
-                if (batch.hasExpecteds()) {
-                    int expectedIndex = batch.expectedIndex(offset);
-                    if (expectedIndex == index)
-                        matched++;
-                }
-                if (indices != null)
-                    indices[indicesOffset + offset] = index;
+                int expected = batch.expectedIndex(offset);
+                if (expected == index)
+                    matched++;
+                if (outputsIndices != null)
+                    outputsIndices.push(index);
             }
             matcheds[chunkIndex] = matched;
         }
@@ -353,17 +261,19 @@ public class MTNeuralNetwork implements NeuralNetwork, AutoCloseable {
         }
     }
 
-    private class CostDerivativeHandler extends MatrixHandler {
-        private MTMatrix expectedOutputs;
+    private static class CostDerivativeHandler extends MatrixHandler {
+        private MTBatch batch;
+        private MTMatrix outputs;
 
-        public void prepare(MTMatrix expectedOutputs) {
-            this.expectedOutputs = expectedOutputs;
-            this.rows = expectedOutputs.rows();
+        public void prepare(MTMatrix outputs, MTBatch batch) {
+            this.outputs = outputs;
+            this.batch = batch;
+            this.rows = outputs.rows();
         }
 
         @Override
         protected void handleElement(int chunkIndex, int row, int col) {
-            outputsMatrix.sub(row, col, expectedOutputs.get(row, col));
+            outputs.sub(row, col, batch.expectedIndex(col) == row ? 1 : 0);
         }
     }
 
@@ -408,7 +318,7 @@ public class MTNeuralNetwork implements NeuralNetwork, AutoCloseable {
             }
         }
 
-        public void prepare(int layer, MTMatrix bragd) {
+        public void prepare(int layer) {
             this.a = activations[layer];
             this.z = zs[layer];
             this.bgrad = bgrads[layer];
@@ -451,9 +361,9 @@ public class MTNeuralNetwork implements NeuralNetwork, AutoCloseable {
         @Override
         public void start(int chunksCount) {
             if (layerOffsets == null) {
-                layerOffsets = new int[layers];
+                layerOffsets = new int[layers()];
                 layerOffsets[0] = weights[0].size();
-                for (int i = 1; i < layers; i++) {
+                for (int i = 1; i < layers(); i++) {
                     layerOffsets[i] = layerOffsets[i - 1] + weights[i].size();
                 }
             }
@@ -488,9 +398,8 @@ public class MTNeuralNetwork implements NeuralNetwork, AutoCloseable {
                 if (offset < layerOffsets[layer])
                     return layer;
             }
-            throw new IllegalArgumentException("offset " + offset + " is out of bound (" + totalWeights + ")");
+            throw new IllegalArgumentException("offset " + offset + " is out of bound (" + totalWeights() + ")");
         }
-
     }
 
 }

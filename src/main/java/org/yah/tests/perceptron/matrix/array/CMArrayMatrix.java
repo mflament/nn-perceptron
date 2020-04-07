@@ -4,10 +4,10 @@ import java.util.Arrays;
 
 import org.yah.tests.perceptron.Activation;
 import org.yah.tests.perceptron.matrix.Matrix;
+import org.yah.tests.perceptron.matrix.MatrixFunction;
 
 /**
  * @author Yah
- *
  */
 public class CMArrayMatrix implements Matrix<CMArrayMatrix> {
 
@@ -22,6 +22,7 @@ public class CMArrayMatrix implements Matrix<CMArrayMatrix> {
     }
 
     /**
+     *
      */
     public CMArrayMatrix(double[][] _data) {
         colOffset = 0;
@@ -74,14 +75,6 @@ public class CMArrayMatrix implements Matrix<CMArrayMatrix> {
             for (int row = 0; row < rows; row++) {
                 column[row] = func.apply(row, col, column[row]);
             }
-        }
-    }
-
-    @Override
-    public void zero() {
-        int lastCol = colOffset + columns;
-        for (int col = colOffset; col < lastCol; col++) {
-            Arrays.fill(data[col], 0);
         }
     }
 
@@ -204,6 +197,11 @@ public class CMArrayMatrix implements Matrix<CMArrayMatrix> {
     @Override
     public double get(int row, int col) {
         return data[col + colOffset][row];
+    }
+
+    @Override
+    public void set(int row, int col, double value) {
+        data[col + colOffset][row] = value;
     }
 
     @Override

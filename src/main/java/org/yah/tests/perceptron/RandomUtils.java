@@ -1,17 +1,19 @@
 package org.yah.tests.perceptron;
 
 import java.util.Random;
+import java.util.function.DoubleSupplier;
 
 public final class RandomUtils {
-
-    public static final Random RANDOM = createRandom();
 
     public static final long SEED = seed();
 
     private RandomUtils() {}
 
-    private static Random createRandom() {
-        long seed = seed();
+    public static Random newRandom() {
+        return newRandom(seed());
+    }
+
+    public static Random newRandom(long seed) {
         return seed < 0 ? new Random() : new Random(seed);
     }
 
@@ -26,8 +28,13 @@ public final class RandomUtils {
         return seed;
     }
 
-    public static double nextGaussian() {
-        return RANDOM.nextGaussian();
+    public static DoubleSupplier newRandomSource() {
+        return newRandomSource(seed());
+    }
+
+    public static DoubleSupplier newRandomSource(long seed) {
+        Random random = newRandom(seed);
+        return () -> random.nextGaussian();
     }
 
 }

@@ -1,0 +1,4 @@
+Exception in thread "main" java.lang.IllegalStateException: Error creating native neuralnetwork
+	at org.yah.tests.perceptron.jni.NativeNeuralNetwork.<init>(NativeNeuralNetwork.java:29)
+	at org.yah.tests.perceptron.NeuralNetworkSandbox.run(NeuralNetworkSandbox.java:135)
+	at org.yah.tests.perceptron.NeuralNetworkSandbox.main(NeuralNetworkSandbox.java:117)

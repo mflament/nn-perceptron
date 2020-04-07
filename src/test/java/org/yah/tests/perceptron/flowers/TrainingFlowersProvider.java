@@ -36,7 +36,7 @@ class TrainingFlowersProvider implements TrainingSamplesProvider {
     }
 
     private static int[] randomizeFlowers(int total, int count) {
-        Random random = RandomUtils.RANDOM;
+        Random random = RandomUtils.newRandom();
         int[] flowers = new int[total];
         for (int i = 0; i < total; i++)
             flowers[i] = i;

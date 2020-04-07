@@ -3,15 +3,24 @@
 
 void Matrix::create(int _rows, int _columns) {
 	rows = _rows;
-	columns = capacity = _columns;
+	columns = maxColumns = _columns;
 	data = new double[(size_t)_columns * _rows];
 	managed = true;
 	zero();
 }
 
+void Matrix::set(int _rows, int _columns, double* _data)
+{
+	rows = _rows;
+	maxColumns = columns = _columns;
+	data = _data;
+	offset = 0;
+	managed = false;
+}
+
 int Matrix::slide(int _offset, int _columns) {
 	offset = _offset;
-	columns = std::min(_columns, capacity - offset);
+	columns = std::min(_columns, maxColumns - offset);
 	return columns;
 }
 
@@ -53,7 +62,7 @@ int Matrix::maxRowIndex(int c) {
 }
 
 void Matrix::free() {
-	rows = columns = capacity = 0;
+	rows = columns = maxColumns = 0;
 	if (managed) {
 		delete[]data;
 		managed = false;

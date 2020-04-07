@@ -5,12 +5,14 @@ struct Matrix {
 	int columns = 0;
 
 	int offset = 0;
-	int capacity = 0;
+	int maxColumns = 0;
 
 	bool managed = false;
 	double* data = 0;
 
 	void create(int _rows, int _columns);
+	void set(int _rows, int _columns, double* _data);
+
 	int slide(int offset, int _columns);
 
 	inline double get(int row, int col) {

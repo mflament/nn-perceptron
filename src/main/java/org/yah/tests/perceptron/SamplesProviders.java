@@ -2,7 +2,8 @@ package org.yah.tests.perceptron;
 
 public final class SamplesProviders {
 
-    private SamplesProviders() {}
+    private SamplesProviders() {
+    }
 
     public interface SamplesProvider {
 
@@ -13,6 +14,13 @@ public final class SamplesProviders {
 
     public interface TrainingSamplesProvider extends SamplesProvider {
         int outputIndex(int sample);
+        default int[] createExpectedIndices() {
+            int[] res = new int[samples()];
+            for (int i = 0; i < res.length; i++) {
+                res[i] = outputIndex(i);
+            }
+            return res;
+        }
     }
 
     private static abstract class AbstractArraySamplesProvider implements TrainingSamplesProvider {
@@ -35,6 +43,7 @@ public final class SamplesProviders {
         public int samples() {
             return samples;
         }
+
         @Override
         public int outputIndex(int sample) {
             return outputIndices[sample];
@@ -70,7 +79,7 @@ public final class SamplesProviders {
     }
 
     public static TrainingSamplesProvider newTrainingProvider(double[][] inputs, boolean transpose,
-            int[] outputIndices) {
+                                                              int[] outputIndices) {
         return transpose ? new RMArraySamplesProvider(inputs, outputIndices)
                 : new CMArraySamplesProvider(inputs, outputIndices);
     }

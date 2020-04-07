@@ -4,6 +4,7 @@ import java.util.Arrays;
 
 import org.yah.tests.perceptron.Activation;
 import org.yah.tests.perceptron.matrix.Matrix;
+import org.yah.tests.perceptron.matrix.MatrixFunction;
 
 /**
  * @author Yah
@@ -60,6 +61,11 @@ public class CMFlatMatrix implements Matrix<CMFlatMatrix> {
     }
 
     @Override
+    public void set(int row, int col, double value) {
+        data[indexOf(col) + row] = value;
+    }
+
+    @Override
     public CMFlatMatrix self() {
         return this;
     }
@@ -72,12 +78,6 @@ public class CMFlatMatrix implements Matrix<CMFlatMatrix> {
                 data[ci + r] = func.apply(r, c, data[ci + r]);
             }
         }
-    }
-
-    @Override
-    public void zero() {
-        int start = indexOf(0);
-        Arrays.fill(data, start, start + columns, 0);
     }
 
     @Override
@@ -264,10 +264,6 @@ public class CMFlatMatrix implements Matrix<CMFlatMatrix> {
     private int indexOf(int column) {
         return (column + colOffset) * rows;
     }
-
-//    private int indexOf(int row, int column) {
-//        return offset + row * rowStride + column * columnStride;
-//    }
 
     @Override
     public String toString() {

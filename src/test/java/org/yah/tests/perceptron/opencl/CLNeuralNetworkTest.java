@@ -1,59 +1,50 @@
 package org.yah.tests.perceptron.opencl;
 
-import java.io.IOException;
-import java.io.UncheckedIOException;
-import java.util.Arrays;
-import java.util.function.Consumer;
-
-import org.junit.After;
-import org.junit.Before;
-import org.yah.tests.perceptron.AbstractNeuralNetworkTest;
-import org.yah.tests.perceptron.SamplesProviders;
-import org.yah.tests.perceptron.SamplesProviders.TrainingSamplesProvider;
-import org.yah.tests.perceptron.SamplesSource;
-import org.yah.tests.perceptron.TrainingSamples;
+import org.junit.AfterClass;
+import org.junit.BeforeClass;
+import org.yah.tests.perceptron.NeuralNetwork;
+import org.yah.tests.perceptron.NeuralNetworkState;
+import org.yah.tests.perceptron.base.AbstractNeuralNetworkTest;
+import org.yah.tests.perceptron.matrix.MatrixNeuralNetwork;
 import org.yah.tools.opencl.context.CLContext;
+
+import java.io.IOException;
 
 /**
  * @author Yah
- *
  */
-public class CLNeuralNetworkTest extends AbstractNeuralNetworkTest<CLNeuralNetwork> {
+public class CLNeuralNetworkTest extends AbstractNeuralNetworkTest {
 
-    private CLContext context;
+    private static CLContext context;
 
-    @Before
-    public void setup() {
+    @BeforeClass
+    public static void setupContext() {
         context = CLContext.createDefault((msg, data) -> System.out.println(msg));
     }
 
-    @After
-    public void release() {
+    @AfterClass
+    public static void closeContext() {
         if (context != null)
             context.close();
     }
 
     @Override
-    protected void withNetwork(Consumer<CLNeuralNetwork> consumer, int... layerSizes) {
-        try (CLNeuralNetwork network = new CLNeuralNetwork(context, layerSizes)) {
-            consumer.accept(network);
+    protected NeuralNetwork newNetwork(NeuralNetworkState state) {
+        try {
+            return new CLNeuralNetwork(context, state);
         } catch (IOException e) {
-            throw new UncheckedIOException(e);
+            throw new AssertionError(e);
         }
     }
-    
-    public static void main(String[] args) throws IOException {
-        try (CLNeuralNetwork network = new CLNeuralNetwork(2,2,2)) {
-            double[][] inputs = new double[][] { { 0, 0 }, { 0, 1 }, { 1, 0 }, { 1, 1 } };
-            int[] expectedIndices = new int[] { 0, 1, 1, 0 };
-            TrainingSamplesProvider provider = SamplesProviders.newTrainingProvider(inputs, false,
-                    expectedIndices);
-            SamplesSource sampleSource = network.createSampleSource();
-            TrainingSamples samples = sampleSource.createTraining(provider, 0);
-            int[] outputs = new int[samples.size()]; 
-            double score = network.evaluate(samples, outputs);
-            System.out.println(Arrays.toString(outputs));
-            System.out.println(score);
-        }
+
+    @Override
+    protected void updateState(NeuralNetworkState network) {
+        ((CLNeuralNetwork) network).updateState();
     }
+
+    @Override
+    protected void updateModel(NeuralNetworkState network) {
+        ((CLNeuralNetwork) network).updateModel();
+    }
+
 }

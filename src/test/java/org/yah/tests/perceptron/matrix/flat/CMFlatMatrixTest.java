@@ -1,7 +1,6 @@
 package org.yah.tests.perceptron.matrix.flat;
 
-import org.yah.tests.perceptron.AbstractMatrixTest;
-import org.yah.tests.perceptron.matrix.flat.CMFlatMatrix;
+import org.yah.tests.perceptron.matrix.AbstractMatrixTest;
 
 public class CMFlatMatrixTest extends AbstractMatrixTest<CMFlatMatrix> {
 

@@ -14,15 +14,6 @@ int outputs(const Network* n) {
 	return n->layers[LAYERS - 1];
 }
 
-void print(int rows, int cols, int offset, global const T* m) {
-	for (int r=0 ; r < rows; r++) {
-		for (int c = 0; c < cols; c++) {
-			printf("%.3f ", m[(offset + c) * rows + r]);
-		}
-		printf("\n");
-	}
-}
-
 const float sigmoid(const T v) {
 	return 1.0 / (1.0 + exp(-v));
 }
@@ -32,27 +23,34 @@ const float sigmoid_prime(const T v) {
 	return s * (1.0 - s);
 }
 
-T layer_forward(const int neurons, const int features, const T input,
+T layer_forward(const int layer, const int neurons, const int features, const T input,
 						 global const T** weight, global const T** bias,
 						 local T* partial, local T** z, local T** activation) {
 	int neuron = get_local_id(0);	
 	int feature = get_local_id(1);
+	int maxNeurons = get_local_size(0);
 	int maxFeatures = get_local_size(1);
-	int offset = feature * neurons + neuron;
+	int group_id = get_group_id(1);
 
+	int partialOffset = feature * maxNeurons + neuron;
 	// partial = weight * input
 	if (neuron < neurons && feature < features) {
-		partial[offset] = (*weight)[offset] * input;
+		T w = (*weight)[feature * neurons + neuron];
+		partial[partialOffset] = input * w;
+		if (group_id == 0)
+			printf("weight;%d;%d;%d;%.3f\n", layer, neuron, feature, w);
+		printf("input;%d;%d;%d;%d;%.3f\n", layer, group_id, neuron, feature, input);
+		printf("partial;%d;%d;%d;%d;%.3f\n", layer, group_id, neuron, feature, partial[partialOffset]);
 	} else {
-		partial[offset] = 0;
+		partial[partialOffset] = 0;
 	}
 	barrier(CLK_LOCAL_MEM_FENCE);
 
 	// partial[neuron][0] = sum(partials[neuron])
 	for(unsigned int s = 1; s < maxFeatures; s *= 2) {
 		int f = 2 * s * feature;
-		if (f < features) {
-			partial[f * neurons + neuron] += partial[(f + s) * neurons + neuron];
+		if (f < maxFeatures) {
+			partial[f * maxNeurons + neuron] += partial[(f + s) * maxNeurons + neuron];
 		}
 		barrier(CLK_LOCAL_MEM_FENCE);
 	}
@@ -66,15 +64,15 @@ T layer_forward(const int neurons, const int features, const T input,
 			(*z)[neuron] = dot; 
 			(*activation)[neuron] = sig;
 		}
+		printf("activation;%d;%d;%d;%.3f\n", layer, neuron, group_id, partial[neuron]);
 	}
-	barrier(CLK_LOCAL_MEM_FENCE);
-
 	*weight += features * neurons;
 	*bias += neurons;
 	if (activation) {
 		*z += neurons;
 		*activation += neurons;
 	}
+	barrier(CLK_LOCAL_MEM_FENCE);
 	return partial[feature];
 }
 
@@ -93,23 +91,32 @@ void forward(const Network* network,
 	int features = network->inputs, neurons;
 	for (int layer = 0; layer < LAYERS; layer++) {
 		neurons = network->layers[layer];
-		input = layer_forward(neurons, features, input, &weight, &bias, partial, NULL, NULL);
+		input = layer_forward(layer, neurons, features, input, &weight, &bias, partial, NULL, NULL);
+		int neuron = get_local_id(0);
 		features = neurons;
 	}
 }
 
 void maxIndex(int outputs, local T* partial,  local int* partialIndices) {
   int neuron = get_local_id(0);	
-	partialIndices[neuron] = neuron;
+	int feature = get_local_id(1);
+
+	partialIndices[neuron] = neuron < outputs ? neuron : -1;
 	barrier(CLK_LOCAL_MEM_FENCE);
 
 	int maxNeurons = get_local_size(0);
 	// max output resolution
  	for(unsigned int s = 1; s < maxNeurons; s *= 2) {
 			int n = 2 * s * neuron;
-			if (n < outputs && partial[partialIndices[n]] < partial[partialIndices[n+s]]) {
-				partialIndices[n] = partialIndices[n + s];
-			}
+			if (feature == 0 && n < maxNeurons) {
+				int index = partialIndices[n];
+				int otherIndex = partialIndices[n + s];
+				if (index >= 0 && otherIndex >= 0) {
+					if (partial[index] < partial[otherIndex]) {
+							partialIndices[n] = otherIndex;
+					}
+				}
+	 		}
 	    barrier(CLK_LOCAL_MEM_FENCE);
 	}
 }
@@ -238,6 +245,7 @@ kernel void train(Network network,
 									local T* partial, local T* zs, local T* activations) {
   int neuron = get_local_id(0);	
 	int feature = get_local_id(1);
+	int maxNeurons = get_local_size(0);
 	int maxFeatures = get_local_size(1);
 	int groupId = get_group_id(1);
 	
@@ -254,7 +262,7 @@ kernel void train(Network network,
 	int layer, neurons, features = network.inputs;
 	for (layer = 0; layer < LAYERS; layer++) {
 		neurons = network.layers[layer];
-		input = layer_forward(neurons, features, input, &weight, &bias, partial, &z, &activation);
+		input = layer_forward(layer, neurons, features, input, &weight, &bias, partial, &z, &activation);
 		features = neurons;
 	}
 
@@ -289,32 +297,30 @@ kernel void train(Network network,
 		if (neuron < neurons && feature == 0) {
 			activation[neuron] *= sigmoid_prime(z[neuron]);
 			bgrad[neuron] = activation[neuron];
-			printf("bgrad[%d][%d][%d] = %.3f\n", groupId, layer, neuron, bgrad[neuron]);
 		}
 	  barrier(CLK_LOCAL_MEM_FENCE);
 
+
 		// wgrad = activation . T(inputs) 
 		if (neuron < neurons && feature < features) {
-			T w = activation[neuron] * input;
-			printf("wgrad[%d][%d][%d][%d] = %.3f * %.3f = %.3f\n", groupId, layer, neuron, feature, activation[neuron] , input, w);
-			wgrad[feature * neurons + neuron] = w;
-			//printf("wgrad[%d][%d][%d][%d] = %.3f\n", groupId, layer, neuron, feature, wgrad[feature * neurons + neuron]);
+			wgrad[feature * neurons + neuron] = input * activation[neuron];
 		}
 		barrier(CLK_LOCAL_MEM_FENCE);
 
 		if (layer > 0) {
 			// activation[layer-1] (next inputs) = T(weight[layer]) . activation
+			int partialOffset = feature * maxNeurons + neuron;
 			if (feature < neurons && neuron < features) {
-				partial[feature * neurons + neuron] = weight[neuron * neurons + feature] * activation[feature];
+				partial[partialOffset] = weight[neuron * neurons + feature] * activation[feature];
 			} else{
-				partial[feature * neurons + neuron] = 0;
+				partial[partialOffset] = 0;
 			}
 
 			// sum partials columns (features)
 			for(unsigned int s = 1; s < maxFeatures; s *= 2) {
 				int f = 2 * s * feature;
 				if (f < features) {
-					partial[f * neurons + neuron] += partial[(f + s) * neurons + neuron];
+					partial[f * maxNeurons + neuron] += partial[(f + s) * maxNeurons + neuron];
 				}
 				barrier(CLK_LOCAL_MEM_FENCE);
 			}
@@ -322,13 +328,12 @@ kernel void train(Network network,
 			local T* inputs = activation - neurons;
 			if (feature == 0) {
 				inputs[neuron] = partial[neuron];
-				printf("input[%d][%d][%d] = %.3f\n", groupId, layer, neuron, inputs[neuron]);
 			}
 			barrier(CLK_LOCAL_MEM_FENCE);
-
-			input = feature < features ? inputs[feature] : 0;
-		} else {
-			input = feature < network.inputs ? samples[(samplesOffset + groupId) * network.inputs + feature] : 0;
+			if (layer > 1)
+				input = feature < features ? (inputs - features)[feature] : 0;
+			else 
+				input = feature < network.inputs ? samples[(samplesOffset + groupId) * network.inputs + feature] : 0;
 		}
 
 		weight -= neurons * features;
@@ -352,13 +357,12 @@ kernel void sum_grads(Network network,
 	int group_size = get_local_size(0);
 	int lid = get_local_id(0);
 
+	//printf("neuron: %d , sample %d , group_id: %d, lid: %d\n", neuron, sample, group_id, lid);
+
 	if (sample < samplesCount) {
 		wpartial[lid] = wgrads[sample * network.totalWeights + neuron];
-		//printf("wpartial[%d][%d] = %.3f\n", sample, neuron, wpartial[lid]);
-
 		if (neuron < network.totalNeurons) {
 			bpartial[lid] = bgrads[sample * network.totalNeurons + neuron];
-			//printf("bpartial[%d][%d] = %.3f\n", sample, neuron, bpartial[lid]);
 		} else
 			bpartial[lid] = 0;
 	} else {
@@ -379,10 +383,10 @@ kernel void sum_grads(Network network,
 
 	if (lid == 0) {
 		wgrads[group_id * network.totalWeights + neuron] = wpartial[0];
-		//printf("wgrads[%d][%d] = %.3f\n", group_id, neuron, wgrads[group_id * network.totalWeights + neuron]);
+		printf("wgrads;%d;%.3f\n", group_id * network.totalWeights + neuron, wgrads[group_id * network.totalWeights + neuron]);
 		if (neuron < network.totalNeurons) {
 			bgrads[group_id * network.totalNeurons + neuron] = bpartial[0];
-			//printf("bgrads[%d][%d] = %.3f\n", group_id, neuron, bgrads[group_id * network.totalNeurons + neuron]);
+			printf("bgrads;%d;%.3f\n", group_id * network.totalNeurons + neuron, bgrads[group_id * network.totalNeurons + neuron]);
 		}
 	}
 }

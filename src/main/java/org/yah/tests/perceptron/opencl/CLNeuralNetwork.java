@@ -1,9 +1,11 @@
 package org.yah.tests.perceptron.opencl;
 
 import org.lwjgl.BufferUtils;
-import org.yah.tests.perceptron.*;
-import org.yah.tests.perceptron.opencl.CLSamplesSource.CLTrainingBatch;
-import org.yah.tests.perceptron.opencl.CLSamplesSource.CLTrainingSamples;
+import org.yah.tests.perceptron.InputSamples;
+import org.yah.tests.perceptron.NeuralNetworkState;
+import org.yah.tests.perceptron.base.AbstractBatchedNeuralNetwork;
+import org.yah.tests.perceptron.base.DirectBufferOutputs;
+import org.yah.tests.perceptron.base.SamplesSource;
 import org.yah.tools.opencl.CLEnvironment;
 import org.yah.tools.opencl.CLUtils;
 import org.yah.tools.opencl.cmdqueue.CLCommandQueue.KernelNDRange;
@@ -17,11 +19,11 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.DoubleBuffer;
 import java.nio.IntBuffer;
-import java.util.Iterator;
 
-public class CLNeuralNetwork implements NeuralNetwork, AutoCloseable {
+public final class CLNeuralNetwork extends AbstractBatchedNeuralNetwork<CLTrainingBatch, DirectBufferOutputs>
+        implements AutoCloseable {
 
-    private static final int SUM_WORKGROUP_SIZE = 128;
+    private static final int SUM_WORKGROUP_SIZE = 64;
 
     private static final int TYPE_SIZE = Double.BYTES;
 
@@ -30,11 +32,6 @@ public class CLNeuralNetwork implements NeuralNetwork, AutoCloseable {
     }
 
     final CLEnvironment environment;
-
-    private final int[] layerSizes;
-    private final int layers;
-
-    private final int totalNeurons, totalWeights;
 
     private final IntBuffer networkBuffer;
 
@@ -57,7 +54,6 @@ public class CLNeuralNetwork implements NeuralNetwork, AutoCloseable {
 
     private CLBuffer outputsBuffer;
     private int outputsCapacity;
-    private IntBuffer outputsIntBuffer;
 
     private CLBuffer matchedCountBuffer;
     private int matchedCountCapacity;
@@ -68,32 +64,19 @@ public class CLNeuralNetwork implements NeuralNetwork, AutoCloseable {
 
     private final IntBuffer matchedCountResult = BufferUtils.createIntBuffer(1);
 
-    public CLNeuralNetwork(int... layerSizes) throws IOException {
-        this(null, layerSizes);
+    public CLNeuralNetwork(NeuralNetworkState state) throws IOException {
+        this(null, state);
     }
 
-    public CLNeuralNetwork(CLContext clContext, int... layerSizes) throws IOException {
-        this.layerSizes = layerSizes;
-        this.layers = layerSizes.length - 1;
+    public CLNeuralNetwork(CLContext clContext, NeuralNetworkState state) throws IOException {
+        super(state);
         this.environment = CLEnvironment.builder()
                 .withContext(clContext)
                 .withSourceResource("cl/neuralnetwork.cl")
-                .withOptions("-DLAYERS=" + layers + " -DTYPE=double")
+                .withOptions("-DLAYERS=" + layers() + " -DTYPE=double")
                 .build();
 
-        int maxFeatures = layerSizes[0];
-        int maxNeurons = 0;
-        int tn = 0, tw = 0;
-        for (int layer = 0; layer < layers; layer++) {
-            maxFeatures = Math.max(maxFeatures, features(layer));
-            maxNeurons = Math.max(maxNeurons, neurons(layer));
-            tn += neurons(layer);
-            tw += neurons(layer) * features(layer);
-        }
-        totalNeurons = tn;
-        totalWeights = tw;
-
-        localWorkSize = new long[]{CLUtils.nextPowerOfTwo(maxNeurons), CLUtils.nextPowerOfTwo(maxFeatures)};
+        localWorkSize = new long[]{CLUtils.nextPowerOfTwo(maxNeurons()), CLUtils.nextPowerOfTwo(maxFeatures())};
         workGroupSize = localWorkSize[0] * localWorkSize[1];
         range = environment.kernelRange();
         range.globalWorkSizes(localWorkSize[0], localWorkSize[1]);
@@ -116,34 +99,19 @@ public class CLNeuralNetwork implements NeuralNetwork, AutoCloseable {
     }
 
     private CLBuffer createBiases() {
-        // zero device memory (not always done if using size initialization)
-        DoubleBuffer buffer = BufferUtils.createDoubleBuffer(totalNeurons);
+        DoubleBuffer buffer = BufferUtils.createDoubleBuffer(totalNeurons());
+        visitBiases((layer, neuron) -> buffer.put(bias(layer, neuron)));
+        buffer.flip();
         return environment.mem(buffer, BufferProperties.MEM_COPY_HOST_PTR,
-                BufferProperties.MEM_READ_WRITE,
-                BufferProperties.MEM_HOST_READ_ONLY);
+                BufferProperties.MEM_READ_WRITE);
     }
 
     private CLBuffer createWeights() {
-        int size = 0;
-        for (int layer = 0; layer < layers; layer++) {
-            size += neurons(layer) * features(layer);
-        }
-        DoubleBuffer buffer = BufferUtils.createDoubleBuffer(size);
-        for (int layer = 0; layer < layers; layer++) {
-            int neurons = neurons(layer);
-            int features = features(layer);
-            double q = Math.sqrt(2.0 / features);
-            for (int n = 0; n < neurons; n++) {
-                for (int f = 0; f < features; f++) {
-                    double w = RandomUtils.nextGaussian() * q;
-                    buffer.put(w);
-                }
-            }
-        }
+        DoubleBuffer buffer = BufferUtils.createDoubleBuffer(totalWeights());
+        visitWeights((layer, neuron, feature) -> buffer.put(weight(layer, neuron, feature)));
         buffer.flip();
         return environment.mem(buffer, BufferProperties.MEM_COPY_HOST_PTR,
-                BufferProperties.MEM_READ_WRITE,
-                BufferProperties.MEM_HOST_READ_ONLY);
+                BufferProperties.MEM_READ_WRITE);
     }
 
     /**
@@ -157,8 +125,13 @@ public class CLNeuralNetwork implements NeuralNetwork, AutoCloseable {
      * </code>
      */
     private IntBuffer createNetworkBuffer() {
-        IntBuffer res = BufferUtils.createIntBuffer(layerSizes.length + 2);
-        return res.put(layerSizes).put(totalWeights).put(totalNeurons).flip();
+        IntBuffer res = BufferUtils.createIntBuffer(layers() + 3);
+        res.put(features());
+        for (int layer = 0; layer < layers(); layer++) {
+            res.put(neurons(layer));
+        }
+        res.put(totalWeights()).put(totalNeurons());
+        return res.flip();
     }
 
     @Override
@@ -167,123 +140,100 @@ public class CLNeuralNetwork implements NeuralNetwork, AutoCloseable {
     }
 
     @Override
-    public int layers() {
-        return layers;
-    }
-
-    @Override
-    public int features() {
-        return layerSizes[0];
-    }
-
-    @Override
-    public int outputs() {
-        return layerSizes[layerSizes.length - 1];
-    }
-
-    @Override
-    public int features(int layer) {
-        return layerSizes[layer];
-    }
-
-    @Override
-    public int neurons(int layer) {
-        return layerSizes[layer + 1];
-    }
-
-    @Override
-    public void snapshot(int layer, DoubleBuffer buffer) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public SamplesSource createSampleSource() {
+    protected SamplesSource<CLTrainingBatch> createSampleSource() {
         return new CLSamplesSource(this);
     }
 
     @Override
-    public void propagate(InputSamples samples, int[] outputs) {
-        if (outputsIntBuffer == null || outputsIntBuffer.capacity() < outputs.length) {
-            outputsIntBuffer = BufferUtils.createIntBuffer(outputs.length);
-        }
-        outputsIntBuffer.limit(outputs.length);
-        propagate(samples, outputsIntBuffer);
-        outputsIntBuffer.get(outputs);
+    public DirectBufferOutputs createOutpus(int samples) {
+        return new DirectBufferOutputs(samples);
     }
 
     @Override
-    public void propagate(InputSamples samples, IntBuffer outputs) {
-        CLTrainingSamples clsamples = (CLTrainingSamples) samples;
-        Iterator<CLTrainingBatch> iterator = clsamples.iterator();
-        long event = 0;
-        while (iterator.hasNext()) {
-            CLTrainingBatch batch = iterator.next();
-            range.waitForEvent(event);
-            event = forward(batch, null, outputs);
-
-            range.waitForEvent(event);
-            event = readOutputs(batch, outputs);
-        }
-        environment.finish();
-        outputs.position(0);
+    protected void doPropagate(InputSamples samples, DirectBufferOutputs outputs) {
+        super.doPropagate(samples, outputs);
+        outputs.reset();
     }
 
     @Override
-    public double evaluate(TrainingSamples samples, int[] outputs) {
-        double res;
-        if (outputs != null) {
-            if (outputsIntBuffer == null || outputsIntBuffer.capacity() < outputs.length)
-                outputsIntBuffer = BufferUtils.createIntBuffer(outputs.length);
-            outputsIntBuffer.limit(outputs.length);
-            res = evaluate(samples, outputsIntBuffer);
-            outputsIntBuffer.get(outputs);
-        } else {
-            res = evaluate(samples, (IntBuffer) null);
-        }
+    protected double doEvaluate(InputSamples samples, DirectBufferOutputs outputs) {
+        double res = super.doEvaluate(samples, outputs);
+        if (outputs != null)
+            outputs.reset();
         return res;
     }
 
     @Override
-    public double evaluate(TrainingSamples samples, IntBuffer outputs) {
-        int matched = 0;
-        CLTrainingSamples clSamples = (CLTrainingSamples) samples;
-        for (CLTrainingBatch batch : clSamples) {
-            long forwardEvent = forward(batch, batch.getExpectedIndices(), outputs);
-
-            long matchedSumEvent = sumMatched(batch, forwardEvent);
-            range.waitForEvent(matchedSumEvent);
-            range.requestEvent();
-            matchedSumEvent = environment.read(matchedCountBuffer, matchedCountResult, false, 0, range);
-
-            long outputsEvent = 0;
-            if (outputs != null) {
-                range.waitForEvent(forwardEvent);
-                outputsEvent = readOutputs(batch, outputs);
-            }
-
-            range.waitForEvents(matchedSumEvent, outputsEvent);
-            environment.waitForEvents(range);
-            matched += matchedCountResult.get(0);
-
-            range.waitForEvents();
-        }
-        environment.finish();
-        if (outputs != null)
-            outputs.position(0);
-
-        return matched / (double) samples.size();
+    protected void propagate(CLTrainingBatch batch, DirectBufferOutputs outputs) {
+        range.dontWaitForEvents();
+        long event = forward(batch, null, outputs.buffer());
+        range.waitForEvent(event);
+        readOutputs(batch, outputs.buffer());
     }
 
     @Override
-    public void train(TrainingSamples samples, double learningRate) {
-        CLTrainingSamples clsamples = (CLTrainingSamples) samples;
-        long event = 0;
-        for (CLTrainingBatch batch : clsamples) {
-            event = train(batch, event);
-            event = sumGrads(batch, event);
-            event = updateNetwork(event, learningRate / batch.batchSize);
+    protected int evaluate(CLTrainingBatch batch, DirectBufferOutputs outputs) {
+        IntBuffer outputsBuffer = outputs != null ? outputs.buffer() : null;
+        range.dontWaitForEvents();
+        long forwardEvent = forward(batch, batch.getExpectedIndices(), outputsBuffer);
+        long matchedSumEvent = sumMatched(batch, forwardEvent);
+        range.waitForEvent(matchedSumEvent);
+        range.requestEvent();
+        matchedSumEvent = environment.read(matchedCountBuffer, matchedCountResult, false, 0, range);
+        if (outputs != null) {
+            range.waitForEvent(forwardEvent);
+            readOutputs(batch, outputsBuffer);
         }
-        environment.finish();
+        environment.waitForEvent(matchedSumEvent);
+        return matchedCountResult.get(0);
+    }
+
+    @Override
+    protected void train(CLTrainingBatch batch, double learningRate) {
+        ensureTrainingBufferSize(batch.batchSize);
+        int index = 0;
+        trainingKernel.setArg(index++, networkBuffer);
+        trainingKernel.setArg(index++, weightsBuffer);
+        trainingKernel.setArg(index++, biasesBuffer);
+        trainingKernel.setArg(index++, batch.offset);
+        trainingKernel.setArg(index++, batch.getInputs());
+        trainingKernel.setArg(index++, batch.getExpectedIndices());
+        trainingKernel.setArg(index++, wgradsBuffer);
+        trainingKernel.setArg(index++, bgradsBuffer);
+        trainingKernel.setArgSize(index++, workGroupSize * TYPE_SIZE); // partial
+        trainingKernel.setArgSize(index++, totalNeurons() * TYPE_SIZE); // zs
+        trainingKernel.setArgSize(index, totalNeurons() * TYPE_SIZE); // activations
+        range.globalWorkSizes(localWorkSize[0], localWorkSize[1] * batch.batchSize)
+                .dontWaitForEvents()
+                .requestEvent();
+        long event = environment.run(trainingKernel, range);
+        event = sumGrads(batch, event);
+        event = updateNetwork(event, learningRate / batch.batchSize);
+        environment.waitForEvent(event);
+    }
+
+    @Override
+    protected void updateState() {
+        DoubleBuffer buffer = BufferUtils.createDoubleBuffer(totalWeights());
+        environment.read(weightsBuffer, buffer);
+        visitWeights((layer, neuron, feature) -> weight(layer, neuron, feature, buffer.get()));
+
+        buffer.position(0).limit(totalNeurons());
+        environment.read(biasesBuffer, buffer);
+        visitBiases((layer, neuron) -> bias(layer, neuron, buffer.get()));
+    }
+
+    @Override
+    protected void updateModel() {
+        DoubleBuffer buffer = BufferUtils.createDoubleBuffer(totalWeights());
+        visitWeights((layer, neuron, feature) -> buffer.put(weight(layer, neuron, feature)));
+        buffer.flip();
+        environment.write(weightsBuffer, buffer);
+
+        buffer.position(0).limit(totalNeurons());
+        visitBiases((layer, neuron) -> buffer.put(bias(layer, neuron)));
+        buffer.flip();
+        environment.write(biasesBuffer, buffer);
     }
 
     private long forward(CLTrainingBatch batch, CLMemObject expectedIndices, IntBuffer outputs) {
@@ -319,25 +269,6 @@ public class CLNeuralNetwork implements NeuralNetwork, AutoCloseable {
 
         range.globalWorkSizes(localWorkSize[0], localWorkSize[1] * batch.batchSize).requestEvent();
         return environment.run(kernel, range);
-    }
-
-    private long train(CLTrainingBatch batch, long event) {
-        ensureTrainingBufferSize(batch.batchSize);
-        int index = 0;
-        trainingKernel.setArg(index++, networkBuffer);
-        trainingKernel.setArg(index++, weightsBuffer);
-        trainingKernel.setArg(index++, biasesBuffer);
-        trainingKernel.setArg(index++, batch.offset);
-        trainingKernel.setArg(index++, batch.getInputs());
-        trainingKernel.setArg(index++, batch.getExpectedIndices());
-        trainingKernel.setArg(index++, wgradsBuffer);
-        trainingKernel.setArg(index++, bgradsBuffer);
-        trainingKernel.setArgSize(index++, workGroupSize * TYPE_SIZE); // partial
-        trainingKernel.setArgSize(index++, totalNeurons * TYPE_SIZE); // zs
-        trainingKernel.setArgSize(index, totalNeurons * TYPE_SIZE); // activations
-
-        range.globalWorkSizes(localWorkSize[0], localWorkSize[1] * batch.batchSize).waitForEvent(event).requestEvent();
-        return environment.run(trainingKernel, range);
     }
 
     private long sumMatched(CLTrainingBatch batch, long forwardEvent) {
@@ -378,7 +309,7 @@ public class CLNeuralNetwork implements NeuralNetwork, AutoCloseable {
     }
 
     private long sumGrads(int size, int groups, int groupSize, long event) {
-        sumRange.globalWorkSizes(groups * groupSize, totalWeights)
+        sumRange.globalWorkSizes(groups * groupSize, totalWeights())
                 .localWorkSizes(groupSize, 1)
                 .waitForEvent(event)
                 .requestEvent();
@@ -388,13 +319,13 @@ public class CLNeuralNetwork implements NeuralNetwork, AutoCloseable {
         sumGradsKernel.setArg(index++, size);
         sumGradsKernel.setArg(index++, wgradsBuffer);
         sumGradsKernel.setArg(index++, bgradsBuffer);
-        sumGradsKernel.setArgSize(index++, totalWeights * TYPE_SIZE);
-        sumGradsKernel.setArgSize(index, totalNeurons * TYPE_SIZE);
+        sumGradsKernel.setArgSize(index++, groupSize * TYPE_SIZE);
+        sumGradsKernel.setArgSize(index, groupSize * TYPE_SIZE);
         return environment.run(sumGradsKernel, sumRange);
     }
 
     private long updateNetwork(long event, double lr) {
-        sumRange.globalWorkSizes(totalWeights)
+        sumRange.globalWorkSizes(totalWeights())
                 .localWorkSizes()
                 .waitForEvent(event)
                 .requestEvent();
@@ -405,14 +336,12 @@ public class CLNeuralNetwork implements NeuralNetwork, AutoCloseable {
         updateNetworkKernel.setArg(index++, biasesBuffer);
         updateNetworkKernel.setArg(index++, wgradsBuffer);
         updateNetworkKernel.setArg(index, bgradsBuffer);
-
         return environment.run(updateNetworkKernel, sumRange);
     }
 
-    private long readOutputs(CLTrainingBatch batch, IntBuffer outputs) {
-        range.requestEvent();
+    private void readOutputs(CLTrainingBatch batch, IntBuffer outputs) {
         outputs.position(batch.offset).limit(batch.offset + batch.batchSize);
-        return environment.read(outputsBuffer, outputs, false, 0, range);
+        environment.read(outputsBuffer, outputs, true, 0, range);
     }
 
     private void ensureOutputs(int size) {
@@ -420,7 +349,7 @@ public class CLNeuralNetwork implements NeuralNetwork, AutoCloseable {
             if (outputsBuffer != null)
                 outputsBuffer.close();
             outputsBuffer = environment.mem(size * Integer.BYTES,
-                    BufferProperties.MEM_ALLOC_HOST_PTR,
+                    //BufferProperties.MEM_ALLOC_HOST_PTR,
                     BufferProperties.MEM_WRITE_ONLY,
                     BufferProperties.MEM_HOST_READ_ONLY);
             outputsCapacity = size;
@@ -446,10 +375,10 @@ public class CLNeuralNetwork implements NeuralNetwork, AutoCloseable {
                 wgradsBuffer.close();
             if (bgradsBuffer != null)
                 bgradsBuffer.close();
-            wgradsBuffer = environment.mem(size * totalWeights * TYPE_SIZE,
+            wgradsBuffer = environment.mem(size * totalWeights() * TYPE_SIZE,
                     BufferProperties.MEM_READ_WRITE,
                     BufferProperties.MEM_HOST_NO_ACCESS);
-            bgradsBuffer = environment.mem(size * totalNeurons * TYPE_SIZE,
+            bgradsBuffer = environment.mem(size * totalNeurons() * TYPE_SIZE,
                     BufferProperties.MEM_READ_WRITE,
                     BufferProperties.MEM_HOST_NO_ACCESS);
             trainingBuffersCapacity = size;

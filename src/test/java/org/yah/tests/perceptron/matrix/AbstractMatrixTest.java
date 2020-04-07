@@ -1,11 +1,13 @@
-package org.yah.tests.perceptron;
+package org.yah.tests.perceptron.matrix;
 
 import static org.junit.Assert.assertEquals;
 
 import java.util.Random;
 
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
+import org.yah.tests.perceptron.Activation;
 import org.yah.tests.perceptron.matrix.Matrix;
 
 public abstract class AbstractMatrixTest<M extends Matrix<M>> {
@@ -165,7 +167,7 @@ public abstract class AbstractMatrixTest<M extends Matrix<M>> {
         matrix.sigmoid(result);
         for (int r = 0; r < matrix.rows(); r++) {
             for (int c = 0; c < matrix.columns(); c++) {
-                assertEquals(Activation.sigmoid(matrix.get(r, c)), result.get(r, c), 0);
+                Assert.assertEquals(Activation.sigmoid(matrix.get(r, c)), result.get(r, c), 0);
             }
         }
     }
