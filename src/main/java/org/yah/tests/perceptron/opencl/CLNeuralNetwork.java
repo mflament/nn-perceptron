@@ -36,9 +36,8 @@ public final class CLNeuralNetwork extends AbstractBatchedNeuralNetwork<CLTraini
     private final IntBuffer networkBuffer;
 
     private final CLKernel propagateKernel;
-    private final CLKernel evaluate0Kernel;
-    private final CLKernel evaluate1Kernel;
     private final CLKernel sumMatchedKernel;
+
     private final CLKernel trainingKernel;
     private final CLKernel sumGradsKernel;
     private final CLKernel updateNetworkKernel;
@@ -49,8 +48,10 @@ public final class CLNeuralNetwork extends AbstractBatchedNeuralNetwork<CLTraini
     private final KernelNDRange range;
     private final KernelNDRange sumRange;
 
-    private CLBuffer weightsBuffer;
-    private CLBuffer biasesBuffer;
+    /**
+     * for each layer: weights (column major) + biases
+     */
+    private CLBuffer dataBuffer;
 
     private CLBuffer outputsBuffer;
     private int outputsCapacity;
@@ -58,8 +59,7 @@ public final class CLNeuralNetwork extends AbstractBatchedNeuralNetwork<CLTraini
     private CLBuffer matchedCountBuffer;
     private int matchedCountCapacity;
 
-    private CLBuffer wgradsBuffer;
-    private CLBuffer bgradsBuffer;
+    private CLBuffer gradsBuffer;
     private int trainingBuffersCapacity;
 
     private final IntBuffer matchedCountResult = BufferUtils.createIntBuffer(1);
@@ -86,32 +86,28 @@ public final class CLNeuralNetwork extends AbstractBatchedNeuralNetwork<CLTraini
         sumRange = environment.kernelRange();
 
         networkBuffer = createNetworkBuffer();
-        weightsBuffer = createWeights();
-        biasesBuffer = createBiases();
+        dataBuffer = createDataCLBuffer();
 
         propagateKernel = environment.kernel("propagate");
-        evaluate0Kernel = environment.kernel("evaluate0");
-        evaluate1Kernel = environment.kernel("evaluate1");
         sumMatchedKernel = environment.kernel("sum_matched");
+
         trainingKernel = environment.kernel("train");
         sumGradsKernel = environment.kernel("sum_grads");
         updateNetworkKernel = environment.kernel("update_network");
     }
 
-    private CLBuffer createBiases() {
-        DoubleBuffer buffer = BufferUtils.createDoubleBuffer(totalNeurons());
-        visitBiases((layer, neuron) -> buffer.put(bias(layer, neuron)));
-        buffer.flip();
-        return environment.mem(buffer, BufferProperties.MEM_COPY_HOST_PTR,
+    private CLBuffer createDataCLBuffer() {
+        return environment.mem(createDataDoubleBufffer(), BufferProperties.MEM_COPY_HOST_PTR,
                 BufferProperties.MEM_READ_WRITE);
     }
 
-    private CLBuffer createWeights() {
-        DoubleBuffer buffer = BufferUtils.createDoubleBuffer(totalWeights());
-        visitWeights((layer, neuron, feature) -> buffer.put(weight(layer, neuron, feature)));
-        buffer.flip();
-        return environment.mem(buffer, BufferProperties.MEM_COPY_HOST_PTR,
-                BufferProperties.MEM_READ_WRITE);
+    private DoubleBuffer createDataDoubleBufffer() {
+        DoubleBuffer buffer = BufferUtils.createDoubleBuffer(totalWeights() + totalNeurons());
+        for (int layer = 0; layer < layers(); layer++) {
+            visitWeights(layer, (l, neuron, feature) -> buffer.put(weight(l, neuron, feature)));
+            visitBiases(layer, (l, neuron) -> buffer.put(bias(l, neuron)));
+        }
+        return buffer.flip();
     }
 
     /**
@@ -193,13 +189,11 @@ public final class CLNeuralNetwork extends AbstractBatchedNeuralNetwork<CLTraini
         ensureTrainingBufferSize(batch.batchSize);
         int index = 0;
         trainingKernel.setArg(index++, networkBuffer);
-        trainingKernel.setArg(index++, weightsBuffer);
-        trainingKernel.setArg(index++, biasesBuffer);
+        trainingKernel.setArg(index++, dataBuffer);
         trainingKernel.setArg(index++, batch.offset);
         trainingKernel.setArg(index++, batch.getInputs());
         trainingKernel.setArg(index++, batch.getExpectedIndices());
-        trainingKernel.setArg(index++, wgradsBuffer);
-        trainingKernel.setArg(index++, bgradsBuffer);
+        trainingKernel.setArg(index++, gradsBuffer);
         trainingKernel.setArgSize(index++, workGroupSize * TYPE_SIZE); // partial
         trainingKernel.setArgSize(index++, totalNeurons() * TYPE_SIZE); // zs
         trainingKernel.setArgSize(index, totalNeurons() * TYPE_SIZE); // activations
@@ -207,68 +201,52 @@ public final class CLNeuralNetwork extends AbstractBatchedNeuralNetwork<CLTraini
                 .dontWaitForEvents()
                 .requestEvent();
         long event = environment.run(trainingKernel, range);
+        environment.waitForEvent(event);
+
         event = sumGrads(batch, event);
+        environment.waitForEvent(event);
+
         event = updateNetwork(event, learningRate / batch.batchSize);
         environment.waitForEvent(event);
     }
 
     @Override
     protected void updateState() {
-        DoubleBuffer buffer = BufferUtils.createDoubleBuffer(totalWeights());
-        environment.read(weightsBuffer, buffer);
-        visitWeights((layer, neuron, feature) -> weight(layer, neuron, feature, buffer.get()));
-
-        buffer.position(0).limit(totalNeurons());
-        environment.read(biasesBuffer, buffer);
-        visitBiases((layer, neuron) -> bias(layer, neuron, buffer.get()));
+        DoubleBuffer buffer = BufferUtils.createDoubleBuffer(totalWeights() + totalNeurons());
+        environment.read(dataBuffer, buffer);
+        for (int layer = 0; layer < layers(); layer++) {
+            visitWeights(layer, (l, neuron, feature) -> weight(l, neuron, feature, buffer.get()));
+            visitBiases(layer, (l, neuron) -> bias(l, neuron, buffer.get()));
+        }
     }
 
     @Override
     protected void updateModel() {
-        DoubleBuffer buffer = BufferUtils.createDoubleBuffer(totalWeights());
-        visitWeights((layer, neuron, feature) -> buffer.put(weight(layer, neuron, feature)));
-        buffer.flip();
-        environment.write(weightsBuffer, buffer);
-
-        buffer.position(0).limit(totalNeurons());
-        visitBiases((layer, neuron) -> buffer.put(bias(layer, neuron)));
-        buffer.flip();
-        environment.write(biasesBuffer, buffer);
+        DoubleBuffer doubleBufffer = createDataDoubleBufffer();
+        environment.write(dataBuffer, doubleBufffer);
     }
 
     private long forward(CLTrainingBatch batch, CLMemObject expectedIndices, IntBuffer outputs) {
-        CLKernel kernel;
-        if (expectedIndices == null) {
-            kernel = propagateKernel;
-        } else if (outputs == null) {
-            kernel = evaluate0Kernel;
-        } else {
-            kernel = evaluate1Kernel;
-        }
-
         int index = 0;
-        kernel.setArg(index++, networkBuffer);
-        kernel.setArg(index++, weightsBuffer);
-        kernel.setArg(index++, biasesBuffer);
-        kernel.setArg(index++, batch.offset);
-        kernel.setArg(index++, batch.getInputs());
-        if (expectedIndices != null) {
-            ensureMatchedCount(batch.batchSize);
-            kernel.setArg(index++, expectedIndices);
-            kernel.setArg(index++, matchedCountBuffer);
-            if (outputs != null) {
-                ensureOutputs(batch.batchSize);
-                kernel.setArg(index++, outputsBuffer);
-            }
-        } else {
+        propagateKernel.setArg(index++, networkBuffer);
+        propagateKernel.setArg(index++, dataBuffer);
+
+        propagateKernel.setArg(index++, batch.offset);
+        propagateKernel.setArg(index++, batch.getInputs());
+        propagateKernel.setArg(index++, expectedIndices);
+
+        if (outputs != null)
             ensureOutputs(batch.batchSize);
-            kernel.setArg(index++, outputsBuffer);
-        }
-        kernel.setArgSize(index++, workGroupSize * TYPE_SIZE);
-        kernel.setArgSize(index, outputs() * Integer.BYTES);
+        propagateKernel.setArg(index++, outputsBuffer);
+        if (expectedIndices != null)
+            ensureMatchedCount(batch.batchSize);
+        propagateKernel.setArg(index++, expectedIndices != null ? matchedCountBuffer : null);
+
+        propagateKernel.setArgSize(index++, workGroupSize * TYPE_SIZE);
+        propagateKernel.setArgSize(index, outputs() * Integer.BYTES);
 
         range.globalWorkSizes(localWorkSize[0], localWorkSize[1] * batch.batchSize).requestEvent();
-        return environment.run(kernel, range);
+        return environment.run(propagateKernel, range);
     }
 
     private long sumMatched(CLTrainingBatch batch, long forwardEvent) {
@@ -309,7 +287,7 @@ public final class CLNeuralNetwork extends AbstractBatchedNeuralNetwork<CLTraini
     }
 
     private long sumGrads(int size, int groups, int groupSize, long event) {
-        sumRange.globalWorkSizes(groups * groupSize, totalWeights())
+        sumRange.globalWorkSizes(groups * groupSize, totalWeights() + totalNeurons())
                 .localWorkSizes(groupSize, 1)
                 .waitForEvent(event)
                 .requestEvent();
@@ -317,25 +295,21 @@ public final class CLNeuralNetwork extends AbstractBatchedNeuralNetwork<CLTraini
         int index = 0;
         sumGradsKernel.setArg(index++, networkBuffer);
         sumGradsKernel.setArg(index++, size);
-        sumGradsKernel.setArg(index++, wgradsBuffer);
-        sumGradsKernel.setArg(index++, bgradsBuffer);
-        sumGradsKernel.setArgSize(index++, groupSize * TYPE_SIZE);
+        sumGradsKernel.setArg(index++, gradsBuffer);
         sumGradsKernel.setArgSize(index, groupSize * TYPE_SIZE);
         return environment.run(sumGradsKernel, sumRange);
     }
 
     private long updateNetwork(long event, double lr) {
-        sumRange.globalWorkSizes(totalWeights())
+        sumRange.globalWorkSizes(totalWeights() + totalNeurons())
                 .localWorkSizes()
                 .waitForEvent(event)
                 .requestEvent();
         int index = 0;
         updateNetworkKernel.setArg(index++, networkBuffer);
         updateNetworkKernel.setArg(index++, lr);
-        updateNetworkKernel.setArg(index++, weightsBuffer);
-        updateNetworkKernel.setArg(index++, biasesBuffer);
-        updateNetworkKernel.setArg(index++, wgradsBuffer);
-        updateNetworkKernel.setArg(index, bgradsBuffer);
+        updateNetworkKernel.setArg(index++, dataBuffer);
+        updateNetworkKernel.setArg(index, gradsBuffer);
         return environment.run(updateNetworkKernel, sumRange);
     }
 
@@ -371,14 +345,10 @@ public final class CLNeuralNetwork extends AbstractBatchedNeuralNetwork<CLTraini
 
     private void ensureTrainingBufferSize(int size) {
         if (trainingBuffersCapacity < size) {
-            if (wgradsBuffer != null)
-                wgradsBuffer.close();
-            if (bgradsBuffer != null)
-                bgradsBuffer.close();
-            wgradsBuffer = environment.mem(size * totalWeights() * TYPE_SIZE,
-                    BufferProperties.MEM_READ_WRITE,
-                    BufferProperties.MEM_HOST_NO_ACCESS);
-            bgradsBuffer = environment.mem(size * totalNeurons() * TYPE_SIZE,
+            if (gradsBuffer != null)
+                gradsBuffer.close();
+
+            gradsBuffer = environment.mem(size * (totalWeights() + totalNeurons())  * TYPE_SIZE,
                     BufferProperties.MEM_READ_WRITE,
                     BufferProperties.MEM_HOST_NO_ACCESS);
             trainingBuffersCapacity = size;

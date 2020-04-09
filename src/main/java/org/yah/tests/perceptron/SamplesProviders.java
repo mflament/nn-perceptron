@@ -28,11 +28,6 @@ public final class SamplesProviders {
         protected final double[][] inputs;
         protected final int[] outputIndices;
 
-        /**
-         * @param inputs        if !transpose : column major samples, else row major
-         *                      samples
-         * @param outputIndices null or int[samples]
-         */
         protected AbstractArraySamplesProvider(int samples, double[][] inputs, int[] outputIndices) {
             this.samples = samples;
             this.inputs = inputs;

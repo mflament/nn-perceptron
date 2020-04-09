@@ -8,10 +8,8 @@ import org.yah.tests.perceptron.SamplesProviders.TrainingSamplesProvider;
 import org.yah.tests.perceptron.TrainingSamples;
 import org.yah.tests.perceptron.base.AbstractNeuralNetwork;
 import org.yah.tests.perceptron.base.DirectBufferOutputs;
-import org.yah.tests.perceptron.matrix.MatrixFunction;
 
 import java.nio.ByteBuffer;
-import java.nio.DoubleBuffer;
 import java.nio.IntBuffer;
 
 /**
@@ -102,17 +100,6 @@ public class NativeNeuralNetwork extends AbstractNeuralNetwork<DirectBufferOutpu
         visitWeights((layer, neuron, feature) -> stateBuffer.putDouble(weight(layer, neuron, feature)));
         visitBiases((layer, neuron) -> stateBuffer.putDouble(bias(layer, neuron)));
         stateBuffer.position(0);
-    }
-
-    static DoubleBuffer newMatrixBuffer(int rows, int columns, MatrixFunction function) {
-        DoubleBuffer buffer = BufferUtils.createDoubleBuffer(rows * columns);
-        for (int c = 0; c < columns; c++) {
-            for (int r = 0; r < rows; r++) {
-                buffer.put(function.apply(r, c, 0));
-            }
-        }
-        buffer.flip();
-        return buffer;
     }
 
     private static ByteBuffer createStateBuffer(NeuralNetworkState state) {

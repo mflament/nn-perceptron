@@ -12,10 +12,6 @@ import java.io.IOException;
 
 public class NeuralNetworkSandbox {
 
-    static {
-        Runtime.getRuntime().loadLibrary("neuralnetwork");
-    }
-
     private static final long LOG_INTERVAL = 1000;
     private static final double NS_MS = 1E-6;
 

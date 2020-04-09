@@ -4,10 +4,7 @@ import org.yah.tests.perceptron.SamplesProviders.TrainingSamplesProvider;
 import org.yah.tests.perceptron.base.DefaultNetworkState;
 import org.yah.tests.perceptron.matrix.MatrixNeuralNetwork;
 import org.yah.tests.perceptron.matrix.array.CMArrayMatrix;
-import org.yah.tests.perceptron.matrix.array.RMArrayMatrix;
-import org.yah.tests.perceptron.matrix.flat.CMFlatMatrix;
-import org.yah.tests.perceptron.mt.MTMatrix;
-import org.yah.tests.perceptron.mt.MTNeuralNetwork;
+import org.yah.tests.perceptron.opencl.CLNeuralNetwork;
 
 import java.io.*;
 import java.nio.file.Path;
@@ -197,12 +194,29 @@ public class NetworkDump {
         }
     }
 
-    public static void main(String[] args) throws IOException {
-        NeuralNetworkState state = new DefaultNetworkState(RandomUtils.newRandomSource(123456), 2, 2);
-        NetworkDump networkDump = NetworkDump.create(new MatrixNeuralNetwork<>(CMArrayMatrix::new, state), NeuralNetworkSandbox.NAND, 2, 100, 0.1);
-        networkDump.save(Paths.get("dumps/test.dump"));
-
-        networkDump = NetworkDump.load(Paths.get("dumps/test.dump"));
-        networkDump.test(new MTNeuralNetwork(networkDump.state));
+    private static NetworkDump createDump(int[] layers, int batchSize, int epochs) throws IOException {
+        if (layers[0] != 2) throw new IllegalArgumentException("network features must be 2");
+        NeuralNetworkState state = new DefaultNetworkState(RandomUtils.newRandomSource(123456), layers);
+        NetworkDump networkDump = NetworkDump.create(new MatrixNeuralNetwork<>(CMArrayMatrix::new, state),
+                NeuralNetworkSandbox.NAND,
+                batchSize, epochs, 0.1);
+        StringBuilder sb = new StringBuilder();
+        sb.append("dumps/matrix_n");
+        for (int layer : layers) {
+            sb.append(layer).append('_');
+        }
+        sb.append('b').append(batchSize).append(".dump");
+        networkDump.save(Paths.get(sb.toString()));
+        return networkDump;
     }
+
+    public static void main(String[] args) throws IOException {
+        //NetworkDump dump = createDump(new int[]{2, 2}, 0, 1);
+//        NetworkDump dump = createDump(new int[]{2, 3, 2}, 0, 1);
+        System.out.println("PID: " + ProcessHandle.current().pid());
+        NetworkDump dump = NetworkDump.load(Paths.get("dumps/matrix_n2_3_2_b0.dump"));
+        //NetworkDump dump = NetworkDump.load(Paths.get("dumps/matrix_n2_2_b0.dump"));
+        dump.test(new CLNeuralNetwork(dump.state));
+    }
+
 }

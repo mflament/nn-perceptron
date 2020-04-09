@@ -6,13 +6,16 @@ import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
 
 public class MatrixLogParser {
 
     private static class LogMatrix {
+        private static final Locale LOCALE = Locale.ENGLISH;
         private final String name;
         private final NDMatrix matrix;
 
@@ -29,15 +32,26 @@ public class MatrixLogParser {
             return matrix.length(index);
         }
 
+
+        public double get(int... indices) {
+            try {
+                return matrix.get(indices);
+            } catch (ArrayIndexOutOfBoundsException e) {
+                return 0;
+            }
+        }
+
         public void set(double v, int... indices) {
             matrix.set(v, indices);
         }
 
-        @Override
-        public String toString() {
+        public String toString(int layer) {
             StringBuilder sb = new StringBuilder();
             matrix.visit((indices, value) -> {
                 int dim = indices.length - 1;
+                if (layer >= 0 && indices[0] != layer)
+                    return;
+
                 if (indices[dim] == 0) {
                     if (matrix.dimensions() == 1)
                         sb.append(name).append(System.lineSeparator());
@@ -48,11 +62,16 @@ public class MatrixLogParser {
                         sb.append(System.lineSeparator());
                     }
                 }
-                sb.append(String.format("%7.3f ", value));
+                sb.append(String.format(LOCALE, "%7.3f ", value));
                 if (indices[dim] == matrix.length(dim) - 1)
                     sb.append(System.lineSeparator());
             });
             return sb.toString();
+        }
+
+        @Override
+        public String toString() {
+            return toString(-1);
         }
     }
 
@@ -61,14 +80,23 @@ public class MatrixLogParser {
     private void parse(Stream<String> lines) {
         lines.forEach(line -> {
             String[] parts = line.split(";");
-            if (parts.length > 0) {
+            if (parts.length > 1) {
                 String name = parts[0];
-                int[] indices = new int[parts.length - 2];
-                for (int i = 0; i < indices.length; i++) {
-                    indices[i] = Integer.parseInt(parts[i + 1]);
+                int[] indices;
+                double value;
+                try {
+                     indices = new int[parts.length - 2];
+                    for (int i = 0; i < indices.length; i++) {
+                        indices[i] = Integer.parseInt(parts[i + 1]);
+                    }
+                    value = Double.parseDouble(parts[parts.length - 1]);
+                } catch (NumberFormatException ignored) {
+                    return;
                 }
-                double value = Double.parseDouble(parts[parts.length - 1]);
                 LogMatrix matrix = findOrCreate(name, indices.length);
+                double actual = matrix.get(indices);
+                if (actual != 0 && actual != value)
+                    throw new IllegalArgumentException("Value mismatch in " + matrix.name + Arrays.toString(indices));
                 matrix.set(value, indices);
             }
         });
@@ -91,6 +119,10 @@ public class MatrixLogParser {
         matrices.stream().filter(selector).forEach(System.out::println);
     }
 
+    private void printMatrices(int layer) {
+        matrices.forEach(m -> System.out.println(m.toString(layer)));
+    }
+
     private void printMatrices() {
         printMatrices(m -> true);
     }
@@ -101,6 +133,10 @@ public class MatrixLogParser {
             parser.parse(reader.lines());
         }
         parser.printMatrices();
+//        System.out.println("-------------------- layer 1 ----------------------");
+//        parser.printMatrices(1);
+//        System.out.println("-------------------- layer 0 ----------------------");
+//        parser.printMatrices(0);
     }
 
 }

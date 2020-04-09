@@ -18,6 +18,7 @@ public class NativeNeuralNetworkTest extends AbstractNeuralNetworkTest {
     static {
         System.out.println("PID: " + ProcessHandle.current().pid());
     }
+
     @Override
     protected NeuralNetwork newNetwork(NeuralNetworkState state) {
         return new NativeNeuralNetwork(state);

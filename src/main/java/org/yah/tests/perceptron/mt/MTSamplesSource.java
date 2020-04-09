@@ -39,7 +39,7 @@ public class MTSamplesSource implements SamplesSource<MTBatch> {
         MTMatrix inputs = new MTMatrix(features, samples);
         for (int sample = 0; sample < samples; sample++) {
             for (int feature = 0; feature < features; feature++) {
-                inputs.set(sample, feature, provider.input(sample, feature));
+                inputs.set(feature, sample, provider.input(sample, feature));
             }
         }
         return inputs;

@@ -11,7 +11,7 @@ import java.util.concurrent.Future;
  */
 public class ChunkExecutor implements AutoCloseable {
 
-    private static final int MIN_CHUNK_SIZE = 1024;
+    private static final int MIN_CHUNK_SIZE = 5000;
     
     private final ExecutorService executor;
 
@@ -22,7 +22,7 @@ public class ChunkExecutor implements AutoCloseable {
 
         void handle(int chunkIndex, int offset, int size);
 
-        default void complete() {}
+        default void complete(int chunksCount) {}
     }
 
     private static class Chunk implements Runnable {
@@ -76,7 +76,7 @@ public class ChunkExecutor implements AutoCloseable {
             chunk = chunks[0];
             chunk.prepare(0, count, handler);
             chunk.run();
-            handler.complete();
+            handler.complete(1);
             return;
         }
         
@@ -115,7 +115,7 @@ public class ChunkExecutor implements AutoCloseable {
                 }
             }
         }
-        handler.complete();
+        handler.complete(concurrency);
     }
 
     private Chunk safeGet(Future<Chunk> future) {

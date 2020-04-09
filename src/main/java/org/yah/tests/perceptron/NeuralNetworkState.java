@@ -38,24 +38,33 @@ public interface NeuralNetworkState {
 
     int totalWeights();
 
+
+    default void visitWeights(int layer, WeightVisitor visitor) {
+        int neurons = neurons(layer);
+        int features = features(layer);
+        for (int feature = 0; feature < features; feature++) {
+            for (int neuron = 0; neuron < neurons; neuron++) {
+                visitor.visit(layer, neuron, feature);
+            }
+        }
+    }
+
     default void visitWeights(WeightVisitor visitor) {
         for (int layer = 0; layer < layers(); layer++) {
-            int neurons = neurons(layer);
-            int features = features(layer);
-            for (int feature = 0; feature < features; feature++) {
-                for (int neuron = 0; neuron < neurons; neuron++) {
-                    visitor.visit(layer, neuron, feature);
-                }
-            }
+            visitWeights(layer, visitor);
+        }
+    }
+
+    default void visitBiases(int layer, BiasVisitor visitor) {
+        int neurons = neurons(layer);
+        for (int neuron = 0; neuron < neurons; neuron++) {
+            visitor.visit(layer, neuron);
         }
     }
 
     default void visitBiases(BiasVisitor visitor) {
         for (int layer = 0; layer < layers(); layer++) {
-            int neurons = neurons(layer);
-            for (int neuron = 0; neuron < neurons; neuron++) {
-                visitor.visit(layer, neuron);
-            }
+            visitBiases(layer, visitor);
         }
     }
 

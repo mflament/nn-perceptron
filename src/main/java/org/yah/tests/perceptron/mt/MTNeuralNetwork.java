@@ -247,16 +247,16 @@ public final class MTNeuralNetwork extends AbstractBatchedNeuralNetwork<MTBatch,
                 if (expected == index)
                     matched++;
                 if (outputsIndices != null)
-                    outputsIndices.push(index);
+                    outputsIndices.set(offset, index);
             }
             matcheds[chunkIndex] = matched;
         }
 
         @Override
-        public void complete() {
+        public void complete(int chunks) {
             matched = 0;
-            for (int value : matcheds) {
-                matched += value;
+            for (int i = 0; i < chunks; i++) {
+                matched += matcheds[i];
             }
         }
     }
@@ -312,9 +312,9 @@ public final class MTNeuralNetwork extends AbstractBatchedNeuralNetwork<MTBatch,
                     chunkBgrads[i] = new MTMatrix(maxNeurons(), 1);
                 }
             }
-            for (MTMatrix chunkBgrad : chunkBgrads) {
-                chunkBgrad.reshape(bgrad.rows(), 1);
-                chunkBgrad.zero();
+            for (int i = 0; i < chunksCount; i++) {
+                chunkBgrads[i].reshape(bgrad.rows(), 1);
+                chunkBgrads[i].zero();
             }
         }
 
@@ -340,12 +340,12 @@ public final class MTNeuralNetwork extends AbstractBatchedNeuralNetwork<MTBatch,
         }
 
         @Override
-        public void complete() {
+        public void complete(int chunks) {
             // sum chunk grads to layer bgrads
             for (int r = 0; r < rows; r++) {
                 double s = 0;
-                for (MTMatrix chunkBgrad : chunkBgrads) {
-                    s += chunkBgrad.get(r);
+                for (int i = 0; i < chunks; i++) {
+                    s += chunkBgrads[i].get(r);
                 }
                 bgrad.set(r, s);
             }

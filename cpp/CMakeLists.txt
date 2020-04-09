@@ -8,7 +8,7 @@ project ("neuralnetwork")
 find_package (JNI REQUIRED)
 
 # Add source to this project's executable.
-add_library (neuralnetwork SHARED "jni/org_yah_tests_perceptron_jni_NativeNeuralNetwork.h" "StreamBuffer.h" "TrainingSamples.h" "NeuralNetwork.cpp")
-target_include_directories(neuralnetwork PUBLIC ${JNI_INCLUDE_DIRS})
+add_library (neuralnetwork SHARED "StreamBuffer.h" "TrainingSamples.h" "NeuralNetwork.cpp")
+target_include_directories(neuralnetwork PUBLIC ${JNI_INCLUDE_DIRS} "jni")
 
 install (TARGETS neuralnetwork RUNTIME DESTINATION .)

@@ -64,8 +64,14 @@ public abstract class AbstractNeuralNetworkTest extends AbstractNetworkStateTest
     }
 
     @Test
-    public void testDump() throws IOException {
-        NetworkDump dump = NetworkDump.load(Paths.get("dumps/test.dump"));
+    public void dump_n2_2_b0() throws IOException {
+        NetworkDump dump = NetworkDump.load(Paths.get("dumps/matrix_n2_2_b0.dump"));
+        dump.test(newNetwork(dump.state));
+    }
+
+    @Test
+    public void dump_n2_3_2_b0() throws IOException {
+        NetworkDump dump = NetworkDump.load(Paths.get("dumps/matrix_n2_3_2_b0.dump"));
         dump.test(newNetwork(dump.state));
     }
 

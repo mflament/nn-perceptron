@@ -27,6 +27,10 @@ public class ArrayNetworkOutputs implements NetworkOutputs {
         outputs[offset++] = index;
     }
 
+    public void set(int index, int value) {
+        outputs[index] = value;
+    }
+
     @Override
     public void reset() {
         offset = 0;
@@ -50,4 +54,5 @@ public class ArrayNetworkOutputs implements NetworkOutputs {
         sb.append(']');
         return sb.toString();
     }
+
 }

@@ -5,6 +5,8 @@ import org.yah.tests.perceptron.SamplesProviders.TrainingSamplesProvider;
 
 public interface NeuralNetwork extends NeuralNetworkState {
 
+    int epoch();
+
     NeuralNetworkState getState();
 
     InputSamples createInputs(SamplesProvider provider, int batchSize);

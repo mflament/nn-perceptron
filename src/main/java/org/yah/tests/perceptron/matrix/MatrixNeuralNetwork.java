@@ -5,6 +5,9 @@ import org.yah.tests.perceptron.base.AbstractBatchedNeuralNetwork;
 import org.yah.tests.perceptron.base.ArrayNetworkOutputs;
 import org.yah.tests.perceptron.base.SamplesSource;
 
+import java.util.Locale;
+
+
 /**
  * @author Yah
  */
@@ -16,8 +19,8 @@ public final class MatrixNeuralNetwork<M extends Matrix<M>>
     private int batchSize;
     private int capacity;
 
-    private M[] weightMatrix;
-    private M[] biasesMatrix;
+    private M[] weightMatrices;
+    private M[] biasesMatrices;
 
     private M[] zs; // results of weight + bias [neurons[layer] X batchSize]
     private M[] activations; // sigmoid(z) [neurons[layer] X batchSize]
@@ -34,8 +37,8 @@ public final class MatrixNeuralNetwork<M extends Matrix<M>>
         super(state);
         int layers = layers();
         this.matrixFactory = matrixFactory;
-        weightMatrix = newMatrixArray(layers);
-        biasesMatrix = newMatrixArray(layers);
+        weightMatrices = newMatrixArray(layers);
+        biasesMatrices = newMatrixArray(layers);
         zs = newMatrixArray(layers);
         activations = newMatrixArray(layers);
         bgrads = newMatrixArray(layers);
@@ -44,10 +47,10 @@ public final class MatrixNeuralNetwork<M extends Matrix<M>>
             final int layer = l;
             int neurons = neurons(layer);
             int features = features(layer);
-            weightMatrix[layer] = newMatrix(neurons, features);
-            biasesMatrix[layer] = newMatrix(neurons, 1);
-            weightMatrix[layer].apply((row, column, value) -> weight(layer, row, column));
-            biasesMatrix[layer].apply((row, column, value) -> bias(layer, row));
+            weightMatrices[layer] = newMatrix(neurons, features);
+            biasesMatrices[layer] = newMatrix(neurons, 1);
+            weightMatrices[layer].apply((row, column, value) -> weight(layer, row, column));
+            biasesMatrices[layer].apply((row, column, value) -> bias(layer, row));
             wgrads[layer] = newMatrix(neurons, features);
             bgrads[layer] = newMatrix(neurons, 1);
         }
@@ -66,14 +69,14 @@ public final class MatrixNeuralNetwork<M extends Matrix<M>>
     @Override
     protected void updateState() {
         visitWeights((layer, neuron, feature) -> weight(layer, neuron, feature,
-                weightMatrix[layer].get(neuron, feature)));
-        visitBiases((layer, neuron) -> bias(layer, neuron, biasesMatrix[layer].get(neuron, 0)));
+                weightMatrices[layer].get(neuron, feature)));
+        visitBiases((layer, neuron) -> bias(layer, neuron, biasesMatrices[layer].get(neuron, 0)));
     }
 
     @Override
     protected void updateModel() {
-        visitWeights((layer, neuron, feature) -> weightMatrix[layer].set(neuron, feature, weight(layer, neuron, feature)));
-        visitBiases((layer, neuron) -> biasesMatrix[layer].set(neuron, 0, bias(layer, neuron)));
+        visitWeights((layer, neuron, feature) -> weightMatrices[layer].set(neuron, feature, weight(layer, neuron, feature)));
+        visitBiases((layer, neuron) -> biasesMatrices[layer].set(neuron, 0, bias(layer, neuron)));
     }
 
     @Override
@@ -98,19 +101,20 @@ public final class MatrixNeuralNetwork<M extends Matrix<M>>
         return matched;
     }
 
-    @Override
     protected void train(MatrixBatch<M> batch, double learningRate) {
         // forward propagation
         setBatchSize(batch.size());
         M inputs = batch.inputs;
+
         for (int layer = 0; layer < layers(); layer++) {
             inputs = forward(layer, inputs);
         }
 
-        // backward propagation
         // compute gradients
         // cost derivative = actual - expected
         activations[layers() - 1].apply((index, sample, value) -> value - (batch.expectedIndex(sample) == index ? 1 : 0));
+
+        // backward propagation
         for (int layer = layers() - 1; layer > 0; layer--) {
             backward(layer, activations[layer - 1]);
         }
@@ -151,8 +155,8 @@ public final class MatrixNeuralNetwork<M extends Matrix<M>>
 
     private M forward(int layer, M inputs) {
         // weight . inputs + bias
-        weightMatrix[layer].dot(inputs, zs[layer]);
-        zs[layer].addColumnVector(biasesMatrix[layer]);
+        weightMatrices[layer].dot(inputs, zs[layer]);
+        zs[layer].addColumnVector(biasesMatrices[layer]);
         return zs[layer].sigmoid(activations[layer]);
     }
 
@@ -164,7 +168,6 @@ public final class MatrixNeuralNetwork<M extends Matrix<M>>
         // activation = activation * sigmoid_prime(z)
         z.sigmoid_prime();
         activation.mul(z);
-
         activation.sumRows(bgrads[layer]);
 
         // wgrad = delta . T(inputs)
@@ -172,16 +175,16 @@ public final class MatrixNeuralNetwork<M extends Matrix<M>>
 
         if (layer > 0) {
             // activation[layer-1] (next inputs) = T(weight[layer]) . delta
-            weightMatrix[layer].transpose_dot(activation, activations[layer - 1]);
+            weightMatrices[layer].transpose_dot(activation, activations[layer - 1]);
         }
     }
 
     private void updateNetwork(int layer, double learningRate) {
         double lr = learningRate / batchSize;
         // w = w - (learningRate/batchSize) * wgrad
-        weightMatrix[layer].sub(wgrads[layer].mul(lr));
+        weightMatrices[layer].sub(wgrads[layer].mul(lr));
         // b = b - (learningRate/batchSize) * bgrad
-        biasesMatrix[layer].sub(bgrads[layer].mul(lr));
+        biasesMatrices[layer].sub(bgrads[layer].mul(lr));
     }
 
     @SuppressWarnings("unchecked")

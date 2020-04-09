@@ -52,7 +52,7 @@ public class FlowersDemo {
     private static final int[] LAYERS = {2, 16, 2};
     private static final int SAMPLES = (int) (FLOWERS * 0.005);
     private static final int EVAL_BATCH_SIZE = 0;
-    private static final int TRAINING_BATCH_SIZE = 256;
+    private static final int TRAINING_BATCH_SIZE = 64;
     private static final double LEARNING_RATE = 0.5f;
 
     private static final float[] QUAD_VERTICES = {-1, -1, 0, 1, //
@@ -286,7 +286,7 @@ public class FlowersDemo {
                         trainingAccuracy * 100, overallAccuracy * 100));
 
                 long lastLog = System.currentTimeMillis();
-                int lastEepochs = 0;
+                int lastEpochs = 0;
                 long epochs = 0;
                 long trainingTime = 0, evaluationTime, trainingEvaluationTime, start;
                 while (true) {
@@ -301,11 +301,9 @@ public class FlowersDemo {
 
                     start = System.nanoTime();
                     network.train(trainingFlowers, LEARNING_RATE);
-                    //snapshot(epochs);
-                    //checkSnapshot(epochs);
 
                     trainingTime += System.nanoTime() - start;
-                    lastEepochs++;
+                    lastEpochs++;
                     epochs++;
 
                     long elapsed = System.currentTimeMillis() - lastLog;
@@ -319,10 +317,10 @@ public class FlowersDemo {
                         trainingAccuracy = network.evaluate(trainingFlowers);
                         trainingEvaluationTime = System.nanoTime() - start;
 
-                        long samples = lastEepochs * SAMPLES;
-                        double eps = lastEepochs / (elapsed / 1000.0);
+                        long samples = lastEpochs * SAMPLES;
+                        double eps = lastEpochs / (elapsed / 1000.0);
                         double sms = samples / (double) elapsed;
-                        long avgtt = TimeUnit.NANOSECONDS.toMillis(trainingTime) / lastEepochs;
+                        long avgtt = TimeUnit.NANOSECONDS.toMillis(trainingTime) / lastEpochs;
                         long et = TimeUnit.NANOSECONDS.toMillis(evaluationTime);
                         long tet = TimeUnit.NANOSECONDS.toMillis(trainingEvaluationTime);
                         System.out.println(String.format(
@@ -334,7 +332,7 @@ public class FlowersDemo {
 
                         updateOutputs();
                         lastLog = System.currentTimeMillis();
-                        lastEepochs = 0;
+                        lastEpochs = 0;
                         trainingTime = 0;
                     }
                 }

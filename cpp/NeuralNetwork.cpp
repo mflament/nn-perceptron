@@ -1,7 +1,7 @@
 ﻿// neuralnetwork.cpp : Defines the entry point for the application.
 //
 
-#include "jni/org_yah_tests_perceptron_jni_NativeNeuralNetwork.h"
+#include "org_yah_tests_perceptron_jni_NativeNeuralNetwork.h"
 #include <iostream>
 #include <math.h>
 #include <algorithm>
@@ -18,8 +18,9 @@ double sigmoid_prime(double v) {
 }
 
 double* newMatrix(int rows, int columns) {
-	double* res = new double[rows * columns];
-	memset(res, 0, rows * columns * sizeof(double));
+	size_t capacity = (size_t)rows * columns;
+	double* res = new double[capacity];
+	memset(res, 0, capacity * sizeof(double));
 	return res;
 }
 
@@ -101,8 +102,10 @@ NeuralNetwork::NeuralNetwork(int _layersCount, int* _layerSizes, double* state)
 NeuralNetwork::~NeuralNetwork() {
 	for (int layer = 0; layer < layers(); layer++)
 	{
-		delete[]zs[layer];
-		delete[]activations[layer];
+		if (capacity) {
+			delete[]zs[layer];
+			delete[]activations[layer];
+		}
 		delete[]wgrads[layer];
 		delete[]bgrads[layer];
 	}
@@ -128,9 +131,9 @@ void NeuralNetwork::ensureCapacity(int newCapacity) {
 			zs[layer] = newMatrix(neurons(layer), newCapacity);
 			activations[layer] = newMatrix(neurons(layer), newCapacity);
 		}
+		capacity = newCapacity;
 	}
 }
-
 
 void NeuralNetwork::propagate(const TrainingSamples& samples, int* outputs) {
 	TrainingBatch batch(samples);
@@ -179,8 +182,8 @@ void NeuralNetwork::forward(TrainingBatch& batch) {
 					s += w[feature * neurons + neuron] * inputs[sample * features + feature];
 				}
 				s += b[neuron];
-				z[sample * features + neuron] = s;
-				a[sample * features + neuron] = sigmoid(s);
+				z[sample * neurons + neuron] = s;
+				a[sample * neurons + neuron] = sigmoid(s);
 			}
 		}
 		inputs = a;
@@ -223,7 +226,7 @@ int NeuralNetwork::indexOutputs(TrainingBatch& batch, int* outputsIndices) {
 	int outputsCount = outputs();
 	for (int sample = 0; sample < batch.size; sample++)
 	{
-		int outputIndex = maxIndex(networkOutputs - (size_t) sample * outputsCount, outputsCount);
+		int outputIndex = maxIndex(networkOutputs + (size_t) sample * outputsCount, outputsCount);
 		if (outputIndex == batch.expectedIndex(sample))
 			matched++;
 		if (outputsIndices)
@@ -262,7 +265,7 @@ void NeuralNetwork::backward(int layer, const double* inputs, int samples) {
 		for (int feature = 0; feature < features; feature++) {
 			double s = 0;
 			for (int sample = 0; sample < samples; sample++) {
-				s += a[sample * neurons + neuron] * inputs[sample * features + neuron];
+				s += a[sample * neurons + neuron] * inputs[sample * features + feature];
 			}
 			wgrad[feature * neurons + neuron] = s;
 		}
@@ -279,7 +282,7 @@ void NeuralNetwork::backward(int layer, const double* inputs, int samples) {
 				for (int neuron = 0; neuron < neurons; neuron++) {
 					s += weight[feature * neurons + neuron] * a[sample * neurons + neuron];
 				}
-				nexta[feature * features + sample] = s;
+				nexta[sample * features + feature] = s;
 			}
 		}
 	}
@@ -294,14 +297,14 @@ void NeuralNetwork::updateNetwork(int layer, double lr) {
 	for (int feature = 0; feature < features; feature++) {
 		for (int neuron = 0; neuron < neurons; neuron++) {
 			int offset = feature * neurons + neuron;
-			weight[offset] -= lr * wgrad[offset];
+			weight[offset] -= wgrad[offset] * lr;
 		}
 	}
 	// b = b - (learningRate/batchSize) * bgrad
 	double* bias = biases[layer];
 	double* bgrad = bgrads[layer];
 	for (int neuron = 0; neuron < neurons; neuron++) {
-		bias[neuron] -= bgrad[neuron];
+		bias[neuron] -= bgrad[neuron] * lr;
 	}
 }
 

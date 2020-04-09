@@ -6,10 +6,17 @@ public abstract class AbstractNeuralNetwork<O extends NetworkOutputs> implements
 
     protected final NeuralNetworkState state;
 
+    private int epoch;
+
     private boolean stateDirty, modelDirty;
 
     public AbstractNeuralNetwork(NeuralNetworkState state) {
         this.state = new DefaultNetworkState(state);
+    }
+
+    @Override
+    public int epoch() {
+        return epoch;
     }
 
     @Override
@@ -133,6 +140,7 @@ public abstract class AbstractNeuralNetwork<O extends NetworkOutputs> implements
         checkModel();
         doTrain(samples, learningRate);
         modelChanged();
+        epoch++;
     }
 
     @Override

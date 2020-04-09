@@ -11,8 +11,6 @@ import java.nio.ByteBuffer;
 import java.nio.DoubleBuffer;
 import java.nio.IntBuffer;
 
-import static org.yah.tests.perceptron.jni.NativeNeuralNetwork.newMatrixBuffer;
-
 class NativeTrainingSamples implements TrainingSamples {
 
     private final int size;
@@ -28,9 +26,11 @@ class NativeTrainingSamples implements TrainingSamples {
         this.batchSize = batchSize == 0 ? size : batchSize;
         this.features = network.features();
         this.inputs = createInputs(network, provider);
-        if (provider instanceof TrainingSamplesProvider)
-            this.expectedIndices = createExpectedIndices((TrainingSamplesProvider) provider);
-        else
+        if (provider instanceof TrainingSamplesProvider) {
+            TrainingSamplesProvider trainingProvider = (TrainingSamplesProvider) provider;
+            checkExpecteds(network, trainingProvider);
+            this.expectedIndices = createExpectedIndices(trainingProvider);
+        } else
             this.expectedIndices = null;
         struct = serialize();
     }
@@ -39,12 +39,22 @@ class NativeTrainingSamples implements TrainingSamples {
         int size = Integer.BYTES; // size
         size += Integer.BYTES; // batch size
         size += Integer.BYTES; // features
+
+        if (PointerBuffer.POINTER_SIZE == 8)
+            size += Integer.BYTES; // padding
+
         size += PointerBuffer.POINTER_SIZE; // inputs address
         size += PointerBuffer.POINTER_SIZE; // expected indices address
+
+
         ByteBuffer buffer = BufferUtils.createByteBuffer(size);
-        buffer.putInt(size);
+        buffer.putInt(size());
         buffer.putInt(batchSize);
         buffer.putInt(features);
+
+        if (PointerBuffer.POINTER_SIZE == 8)
+            buffer.putInt(0);
+
         PointerBuffer.put(buffer, MemoryUtil.memAddress(inputs));
         PointerBuffer.put(buffer, expectedIndices == null ? 0 : MemoryUtil.memAddress(expectedIndices));
         return buffer.flip();
@@ -61,8 +71,13 @@ class NativeTrainingSamples implements TrainingSamples {
     }
 
     private DoubleBuffer createInputs(NativeNeuralNetwork network, SamplesProvider provider) {
-        return newMatrixBuffer(network.features(), provider.samples(),
-                (r, c, v) -> provider.input(c, r));
+        DoubleBuffer buffer = BufferUtils.createDoubleBuffer(provider.samples() * network.features());
+        for (int sample = 0; sample < provider.samples(); sample++) {
+            for (int feature = 0; feature < network.features(); feature++) {
+                buffer.put(provider.input(sample, feature));
+            }
+        }
+        return buffer.flip();
     }
 
     private void checkExpecteds(NativeNeuralNetwork network, TrainingSamplesProvider provider) {

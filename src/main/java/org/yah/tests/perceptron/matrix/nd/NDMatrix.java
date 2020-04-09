@@ -151,7 +151,7 @@ public class NDMatrix {
                 else
                     Array.set(parent, indices[d - 1], newArray);
                 array = newArray;
-                lengths[d] = size;
+                lengths[d] = Math.max(size, lengths[d]);
             }
             if (d < indices.length - 1) {
                 parent = array;

@@ -16,15 +16,17 @@ struct TrainingBatch {
 	int size = 0;
 	int offset = 0;
 
-	TrainingBatch(const TrainingSamples& _samples) : samples(_samples) {};
+	TrainingBatch(const TrainingSamples& _samples) : samples(_samples) {
+		size = std::min(samples.batchSize, samples.size);
+	};
 
 	inline bool hasNext() {
 		return offset < samples.size;
 	}
 
 	inline void next() {
-		size = std::min(samples.batchSize, samples.size - offset);
 		offset += size;
+		size = std::min(samples.batchSize, samples.size - offset);
 	}
 
 	inline const double* inputs() const {
