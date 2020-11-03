@@ -1,3 +1,4 @@
 cpp/build
 cpp/jni/*.h
 dumps/
+logs.txt
